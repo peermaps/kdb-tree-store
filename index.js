@@ -4,6 +4,9 @@ var dist = require('euclidean-distance')
 var inherits = require('inherits')
 var EventEmitter = require('events').EventEmitter
 
+var almostEqual = require('almost-equal')
+var FLT = almostEqual.FLT_EPSILON
+
 var REGION = 0, POINT = 1
 
 module.exports = KDB
@@ -100,7 +103,7 @@ KDB.prototype._parsePoint = function (buf, depth, query) {
       } else throw new Error('unsupported type: ' + t)
       if (!m) continue
       var qj = query.query[j]
-      if (qj[0] < p || qj[1] > p) m = false
+      if (ltf32(qj[0], p) || gtf32(qj[1], p)) m = false
       pt.push(p)
     }
     if (m && query.filter(pt)) {
@@ -276,3 +279,5 @@ KDB.prototype._addPoint = function (buf, pt) {
 }
 
 function noop () {}
+function ltf32 (a, b) { return a < b && !almostEqual(a, b, FLT, FLT) }
+function gtf32 (a, b) { return a > b && !almostEqual(a, b, FLT, FLT) }

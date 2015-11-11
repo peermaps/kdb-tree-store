@@ -2,13 +2,15 @@ var kdbtree = require('../')
 var test = require('tape')
 var fdstore = require('fd-chunk-store')
 var tmpdir = require('os').tmpdir()
+var almostEqual = require('almost-equal')
+var FLT = almostEqual.FLT_EPSILON
 
 var path = require('path')
 var file = path.join(tmpdir, 'kdb-tree-' + Math.random())
 
 test('points', function (t) {
-  var n = 1
-  t.plan(n*3 + 2)
+  var n = 2
+  t.plan(n*(2+4+2) + 2)
   var kdb = kdbtree({
     types: [ 'float32', 'float32', 'float32' ],
     size: 4096,
@@ -27,7 +29,7 @@ test('points', function (t) {
       t.ifError(err)
       kdb.query([x,y,z], function (err, pts) {
         t.ifError(err)
-        t.deepEqual(pts, [[x,y,z,loc]])
+        approx(t, pts, [[x,y,z,loc]])
         if (--pending === 0) check()
       })
     })
@@ -43,3 +45,13 @@ test('points', function (t) {
     })
   }
 })
+
+function approx (t, a, b) {
+  t.equal(a.length, b.length, 'approx length')
+  for (var i = 0; i < a.length; i++) {
+    t.equal(a[i].length, b[i].length, 'approx length [' + i + ']')
+    for (var j = 0; j < a[0].length; j++) {
+      t.ok(almostEqual(a[i][j], b[i][j], FLT, FLT), 'approx equal')
+    }
+  }
+}
