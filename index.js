@@ -1,4 +1,5 @@
 var Readable = require('readable-stream').Readable
+var collect = require('collect-stream')
 var dist = require('euclidean-distance')
 var REGION = 0, POINT = 1
 
@@ -16,13 +17,14 @@ function KDB (opts) {
   this.size = opts.size
 }
 
-KDB.prototype.query = function (rquery) {
+KDB.prototype.query = function (rquery, cb) {
   var self = this
   var q = normq(rquery)
   var pages = [ [ self.root, 0 ] ]
 
   var results = new Readable
   results._read = read
+  if (cb) collect(results, cb)
   return results
 
   function read () {

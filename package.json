@@ -30,6 +30,7 @@
     "tape": "^4.2.2"
   },
   "dependencies": {
+    "collect-stream": "^1.1.1",
     "euclidean-distance": "^0.1.0",
     "readable-stream": "^2.0.4"
   }
