@@ -21,6 +21,8 @@ function KDB (opts) {
   this.types = opts.types
   this.size = opts.size
   this.free = opts.free || 0
+  this._insertQueue = []
+  this._pending = 0
 }
 
 KDB.prototype.query = function (rquery, cb) {
@@ -132,6 +134,27 @@ function normq (q) {
 }
 
 KDB.prototype.insert = function (pt, cb) {
+  var self = this
+  if (self._pending++ === 0) {
+    self._insert(pt, oninsert(cb))
+  } else {
+    self._insertQueue.push([pt,cb])
+  }
+  function done () {
+    if (self._insertQueue.length === 0) return
+    var q = self._insertQueue.shift()
+    self._insert(q[0], oninsert(q[1]))
+  }
+  function oninsert (f) {
+    return function (err) {
+      f(err)
+      self._pending--
+      done()
+    }
+  }
+}
+
+KDB.prototype._insert = function (pt, cb) {
   var self = this
   if (!cb) cb = noop
   var query = []
