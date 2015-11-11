@@ -1,0 +1,36 @@
+{
+  "name": "kdb-tree",
+  "version": "1.0.0",
+  "description": "kdb tree implementation using a chunk store",
+  "main": "index.js",
+  "scripts": {
+    "test": "tape test/*.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/substack/kdb-tree.git"
+  },
+  "keywords": [
+    "kdb",
+    "tree",
+    "multidimensional",
+    "data",
+    "structure",
+    "kdtree",
+    "btree"
+  ],
+  "author": "substack",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/substack/kdb-tree/issues"
+  },
+  "homepage": "https://github.com/substack/kdb-tree#readme",
+  "devDependencies": {
+    "fd-chunk-store": "^1.1.0",
+    "tape": "^4.2.2"
+  },
+  "dependencies": {
+    "euclidean-distance": "^0.1.0",
+    "readable-stream": "^2.0.4"
+  }
+}
