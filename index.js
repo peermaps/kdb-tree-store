@@ -44,17 +44,28 @@ KDB.prototype.query = function (rquery) {
   function parseRegion (buf, depth) {
     var nregions = buf.readUInt16BE(1)
     var len = self.types.length
-    var t = self.types[depth % len]
     var q = query[depth % len]
+    var offset = 3
+
     for (var i = 0; i < nregions; i++) {
-      if (t === 'float32') {
-        var min = buf.readFloat32BE(3 + i * 12)
-        var max = buf.readFloat32BE(3 + i * 12 + 4)
-        var page = buf.readUInt32BE(3 + i * 12 + 8)
-        if (q[0] >= min && q[1] <= max) {
-          pages.push([ page, depth+1 ])
+      var match = false
+      for (var j = 0; j < len; j++) {
+        var tt = self.types[j % len]
+        var d = j % len === depth % len
+        if (d && tt === 'float32') {
+          var min = buf.readFloat32BE(offset)
+          var max = buf.readFloat32BE(offset + 4)
+          if (q[0] >= min && q[1] <= max) match = true
         }
-      } else throw new Error('unsupported type: ' + t)
+        if (tt === 'float32') {
+          offset += 4 + 4
+        } else throw new Error('unsupported type: ' + tt)
+      }
+      if (match) {
+        var page = buf.readUInt32BE(offset)
+        pages.push([ page, depth+1 ])
+      }
+      offset += 4
     }
   }
  

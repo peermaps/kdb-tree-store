@@ -7,7 +7,7 @@ SIZE bytes:
 # region page (TYPE=0)
 
 n regions (uint16)
-each region: [ min (float32), max (float32), page id (uint32???) ]
+each region: [ min0, max0, min1, max1, ...minN, maxN, page id (uint32???) ]
 
 # point page (TYPE=1)
 
