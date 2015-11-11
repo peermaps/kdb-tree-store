@@ -1,5 +1,5 @@
 var Readable = require('readable-stream').Readable
-var collect = require('collect-stream')
+var collect = require('./lib/collect.js')
 var dist = require('euclidean-distance')
 var inherits = require('inherits')
 var EventEmitter = require('events').EventEmitter
@@ -13,13 +13,14 @@ function KDB (opts) {
   if (!(this instanceof KDB)) return new KDB(opts)
   EventEmitter.call(this)
   if (!opts.store) throw new Error('opts.store required')
-  if (!opts.root) throw new Error('opts.root required')
+  if (opts.root === undefined) throw new Error('opts.root required')
   if (!opts.types) throw new Error('opts.types required')
   if (!opts.size) throw new Error('opts.size required')
   this.store = opts.store
   this.root = opts.root
   this.types = opts.types
   this.size = opts.size
+  this.free = opts.free || 0
 }
 
 KDB.prototype.query = function (rquery, cb) {
@@ -64,8 +65,8 @@ KDB.prototype._parseRegion = function (buf, pages, depth) {
       var tt = self.types[j % len]
       var d = j % len === depth % len
       if (d && tt === 'float32') {
-        var min = buf.readFloat32BE(offset)
-        var max = buf.readFloat32BE(offset + 4)
+        var min = buf.readFloatBE(offset)
+        var max = buf.readFloatBE(offset + 4)
         if (q[0] >= min && q[1] <= max) match = true
       }
       if (tt === 'float32') {
@@ -92,15 +93,15 @@ KDB.prototype._parsePoint = function (buf, depth, query) {
     for (var j = 0; j < len; j++) {
       var t = self.types[j % len]
       if (t === 'float32') {
-        var p = buf.readFloat32BE(offset)
+        var p = buf.readFloatBE(offset)
         offset += 4
       } else throw new Error('unsupported type: ' + t)
       if (!m) continue
-      var qj = query[j]
+      var qj = query.query[j]
       if (qj[0] < p || qj[1] > p) m = false
       pt.push(p)
     }
-    if (m && q.filter(pt)) {
+    if (m && query.filter(pt)) {
       pt.push(buf.readUInt32BE(offset))
       results.push(pt)
     }
@@ -146,7 +147,7 @@ KDB.prototype.insert = function (pt, cb) {
       if (buf.length === 0 && self.root === page[0]) {
         var pbuf = self._createPointPage()
         self._addPoint(pbuf, pt)
-        return self.store.set(self.root, pbuf, cb)
+        return self.store.put(self.root, pbuf, cb)
       } else if (buf.length === 0) {
         return cb(new Error('empty page: ' + page[0]))
       }
@@ -158,17 +159,33 @@ KDB.prototype.insert = function (pt, cb) {
         read()
       } else if (buf[0] === POINT) {
         if (self._addPoint(buf, pt)) {
-          return self.store.set(page[0], buf, cb)
+          return self.store.put(page[0], buf, cb)
         }
         var sp = self._splitPointPage(buf, page[1])
+        throw new Error('update region...')
+        /*
         if (self._addRegion(region, sp.left, sp.right)) {
-          // ...save things...
-        } else {
+          self.store.put(self._available(), 
+            sp.left
+          self.store.put(regionPage, region, done)
+        } else { // region overflow
           // split region, re-order
+          throw new Error('handle region overflow')
         }
+        */
       }
     })
   })()
+}
+
+KDB.prototype._available = function () {
+  var i = self.free++
+  self.emit('free', i)
+}
+
+KDB.prototype._addRegion = function (buf, left, right) {
+  throw new Error('add region...')
+  return true
 }
 
 KDB.prototype._splitPointPage = function (buf, depth) {
@@ -182,7 +199,7 @@ KDB.prototype._splitPointPage = function (buf, depth) {
     for (var j = 0; j < len; j++) {
       var t = self.types[j % len]
       if (t === 'float32') {
-        var p = buf.readFloat32BE(offset)
+        var p = buf.readFloatBE(offset)
         offset += 4
       } else throw new Error('unsupported type: ' + t)
       pt.push(p)
@@ -225,12 +242,13 @@ KDB.prototype._addPoint = function (buf, pt) {
     var t = self.types[j]
     if (t === 'float32') {
       if (offset > buf.length) return false // overflow
-      buf.writeFloat32BE(pt[j], offset)
+      buf.writeFloatBE(pt[j], offset)
       offset += 4
     } else throw new Error('unknown type: ' + t)
   }
   if (offset > buf.length) return false // overflow
   buf.writeUInt32BE(pt[j], offset)
+  buf.writeUInt16BE(1, npoints+1)
   return true // no overflow
 }
 

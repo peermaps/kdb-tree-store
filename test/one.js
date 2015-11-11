@@ -6,7 +6,7 @@ var tmpdir = require('os').tmpdir()
 var path = require('path')
 var file = path.join(tmpdir, 'kdb-tree-' + Math.random())
 
-test('query', function (t) {
+test('one point', function (t) {
   t.plan(3)
   var kdb = kdbtree({
     types: [ 'float32', 'float32', 'float32' ],
