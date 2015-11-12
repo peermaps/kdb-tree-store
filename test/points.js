@@ -9,7 +9,7 @@ var path = require('path')
 var file = path.join(tmpdir, 'kdb-tree-' + Math.random())
 
 test('points', function (t) {
-  var n = 2
+  var n = 1
   t.plan(n*(2+4+2) + 2)
   var kdb = kdbtree({
     types: [ 'float32', 'float32', 'float32' ],
@@ -19,7 +19,7 @@ test('points', function (t) {
   })
   var data = []
   var pending = n
-  for (var i = 0; i < n; i++) {
+  for (var i = 0; i < n; i++) (function () {
     var x = Math.random() * 200 - 100
     var y = Math.random() * 200 - 100
     var z = Math.random() * 200 - 100
@@ -29,11 +29,14 @@ test('points', function (t) {
       t.ifError(err)
       kdb.query([x,y,z], function (err, pts) {
         t.ifError(err)
-        approx(t, pts, [[x,y,z,loc]])
+        t.equal(pts.length, 1)
+        approx(t, pts[0], [x,y,z,loc])
+        t.equal(pts[0][3], loc)
         if (--pending === 0) check()
       })
     })
-  }
+  })()
+
   function check () {
     kdb.query([[15,50],[-60,10],[50,100]], function (err, pts) {
       t.ifError(err)
@@ -47,11 +50,8 @@ test('points', function (t) {
 })
 
 function approx (t, a, b) {
-  t.equal(a.length, b.length, 'approx length')
   for (var i = 0; i < a.length; i++) {
-    t.equal(a[i].length, b[i].length, 'approx length [' + i + ']')
-    for (var j = 0; j < a[0].length; j++) {
-      t.ok(almostEqual(a[i][j], b[i][j], FLT, FLT), 'approx equal')
-    }
+    t.ok(almostEqual(a[i], b[i], FLT, FLT),
+      'approx equal: ' + a[i] + ' ~ ' + b[i])
   }
 }

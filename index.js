@@ -72,7 +72,7 @@ KDB.prototype._parseRegion = function (buf, pages, depth) {
       if (d && tt === 'float32') {
         var min = buf.readFloatBE(offset)
         var max = buf.readFloatBE(offset + 4)
-        if (q[0] >= min && q[1] <= max) match = true
+        if (ltef32(q[0], min) && gte(q[1], max)) match = true
       }
       if (tt === 'float32') {
         offset += 4 + 4
@@ -280,4 +280,6 @@ KDB.prototype._addPoint = function (buf, pt) {
 
 function noop () {}
 function ltf32 (a, b) { return a < b && !almostEqual(a, b, FLT, FLT) }
+function ltef32 (a, b) { return a < b || almostEqual(a, b, FLT, FLT) }
 function gtf32 (a, b) { return a > b && !almostEqual(a, b, FLT, FLT) }
+function gtef32 (a, b) { return a > b || almostEqual(a, b, FLT, FLT) }
