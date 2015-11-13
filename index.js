@@ -74,7 +74,7 @@ KDB.prototype._parseRegion = function (buf, query, pages, depth) {
       if (d && tt === 'float32') {
         var min = buf.readFloatBE(offset)
         var max = buf.readFloatBE(offset + 4)
-        if (ltef32(q[0], min) && gte(q[1], max)) match = true
+        if (ltef32(q[0], max) && gtef32(q[1], min)) match = true
       }
       if (tt === 'float32') {
         offset += 4 + 4
@@ -175,7 +175,7 @@ KDB.prototype._insert = function (pt, cb) {
       if (buf.length === 0 && self.root === page[0]) {
         var pbuf = self._createPointPage()
         self._addPoints(pbuf, [pt])
-        return self.store.put(self.root, pbuf, cb)
+        return self.store.put(self._available(), pbuf, cb)
       } else if (buf.length === 0) {
         return cb(new Error('empty page: ' + page[0]))
       }
@@ -239,19 +239,22 @@ KDB.prototype._addRegions = function (buf, regions) {
       offset += (4 * 2) * nregions
     } else throw new Error('unhandled type: ' + t)
   })
+  if (offset > buf.length) return false // overflow
   regions.forEach(function (r) {
     var ex = extents(r[1])
     for (var i = 0; i < ex.length; i++) {
       var t = self.types[i]
       if (t === 'float32') {
-        buf.writeFloatBE(ex[0], offset)
-        buf.writeFloatBE(ex[1], offset+4)
+        buf.writeFloatBE(ex[i][0], offset)
+        buf.writeFloatBE(ex[i][1], offset+4)
         offset += 8
       } else throw new Error('unsupported type: ' + t)
     }
     buf.writeUInt32BE(r[0], offset)
     offset += 4
+    if (offset > buf.length) return false // overflow
   })
+  buf.writeUInt16BE(nregions + regions.length, 1)
   return true
 }
 
