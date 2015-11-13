@@ -9,7 +9,7 @@ var path = require('path')
 var file = path.join(tmpdir, 'kdb-tree-' + Math.random())
 
 test('points', function (t) {
-  var n = 1
+  var n = 20
   t.plan(n*(2+4+2) + 2)
   var kdb = kdbtree({
     types: [ 'float32', 'float32', 'float32' ],

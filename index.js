@@ -263,6 +263,7 @@ KDB.prototype._addPoint = function (buf, pt) {
         offset += 4
       } else throw new Error('unknown type: ' + t)
     }
+    offset += 4
   }
   for (var j = 0; j < pt.length - 1; j++) {
     var t = self.types[j]
@@ -274,7 +275,7 @@ KDB.prototype._addPoint = function (buf, pt) {
   }
   if (offset > buf.length) return false // overflow
   buf.writeUInt32BE(pt[j], offset)
-  buf.writeUInt16BE(1, npoints+1)
+  buf.writeUInt16BE(npoints+1, 1)
   return true // no overflow
 }
 
