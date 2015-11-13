@@ -347,13 +347,14 @@ function gtef32 (a, b) { return a >= b || almostEqual(a, b, FLT, FLT) }
 
 function extents (pts) {
   var bbox = []
-  for (var i = 0; i < pts[0].length-1; i++) {
+  var len = pts[0].length - 1
+  for (var i = 0; i < len; i++) {
     bbox[i] = [ pts[0][i], pts[0][i] ]
   }
   for (var i = 1; i < pts.length; i++) {
-    for (var j = 0; j < pts[i].length-1; j++) {
-      if (pts[i] < bbox[j]) bbox[j][0] = pts[i][j]
-      if (pts[i] > bbox[j]) bbox[j][1] = pts[i][j]
+    for (var j = 0; j < len; j++) {
+      if (pts[i][j] < bbox[j][0]) bbox[j][0] = pts[i][j]
+      if (pts[i][j] > bbox[j][1]) bbox[j][1] = pts[i][j]
     }
   }
   return bbox
