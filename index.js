@@ -28,6 +28,14 @@ function KDB (opts) {
   this.free = opts.free || 0
   this._insertQueue = []
   this._pending = 0
+
+  this._ptsize = 4
+  for (var i = 0; i < this.types.length; i++) {
+    var t = this.types[i]
+    if (t === 'float32') {
+      this._ptsize += 4
+    } else throw new Error('unhandled type: ' + t)
+  }
 }
 
 KDB.prototype.query = function (rquery, cb) {
@@ -310,28 +318,18 @@ KDB.prototype._addPoints = function (buf, pts) {
   var self = this
   var npoints = buf.readUInt16BE(1)
   var len = self.types.length
-  var offset = 3
+  var offset = 3 + npoints * self._ptsize
+  if (offset + pts.length * self._ptsize > buf.length) return false // overflow
 
-  for (var i = 0; i < npoints; i++) {
-    for (var j = 0; j < len; j++) {
-      var t = self.types[j]
-      if (t === 'float32') {
-        offset += 4
-      } else throw new Error('unknown type: ' + t)
-    }
-    offset += 4
-  }
-  for (var k = 0; k < pts.length; k++) {
-    var pt = pts[k]
+  for (var i = 0; i < pts.length; i++) {
+    var pt = pts[i]
     for (var j = 0; j < pt.length - 1; j++) {
       var t = self.types[j]
       if (t === 'float32') {
-        if (offset > buf.length) return false // overflow
         buf.writeFloatBE(pt[j], offset)
         offset += 4
       } else throw new Error('unknown type: ' + t)
     }
-    if (offset + 4 > buf.length) return false // overflow
     buf.writeUInt32BE(pt[j], offset)
     offset += 4
   }
