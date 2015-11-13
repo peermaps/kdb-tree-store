@@ -4,6 +4,7 @@ var dist = require('euclidean-distance')
 var inherits = require('inherits')
 var EventEmitter = require('events').EventEmitter
 var median = require('median')
+var once = require('once')
 
 var almostEqual = require('almost-equal')
 var FLT = almostEqual.FLT_EPSILON
@@ -47,7 +48,7 @@ KDB.prototype.query = function (rquery, cb) {
       if (buf.length === 0) return results.push(null)
 
       if (buf[0] === REGION) {
-        self._parseRegion(buf, pages, page[1])
+        self._parseRegion(buf, q.query, pages, page[1])
         read()
       } else if (buf[0] === POINT) {
         var pts = self._parsePoint(buf, page[1], q)
@@ -58,7 +59,7 @@ KDB.prototype.query = function (rquery, cb) {
   }
 }
 
-KDB.prototype._parseRegion = function (buf, pages, depth) {
+KDB.prototype._parseRegion = function (buf, query, pages, depth) {
   var self = this
   var nregions = buf.readUInt16BE(1)
   var len = self.types.length
@@ -160,7 +161,7 @@ KDB.prototype.insert = function (pt, cb) {
 
 KDB.prototype._insert = function (pt, cb) {
   var self = this
-  if (!cb) cb = noop
+  cb = once(cb || noop)
   var query = []
   for (var i = 0; i < pt.length - 1; i++) query.push(pt[i], pt[i])
   var pages = [ [ self.root, 0 ] ]
@@ -173,45 +174,84 @@ KDB.prototype._insert = function (pt, cb) {
       if (err) return cb(err)
       if (buf.length === 0 && self.root === page[0]) {
         var pbuf = self._createPointPage()
-        self._addPoint(pbuf, pt)
+        self._addPoints(pbuf, [pt])
         return self.store.put(self.root, pbuf, cb)
       } else if (buf.length === 0) {
         return cb(new Error('empty page: ' + page[0]))
       }
-
+      var pending = 0
       if (buf[0] === REGION) {
-        self._parseRegion(buf, pages, page[1])
+        self._parseRegion(buf, query, pages, page[1])
         region = buf
         regionPage = page[0]
         read()
       } else if (buf[0] === POINT) {
-        if (self._addPoint(buf, pt)) {
+        if (self._addPoints(buf, [pt])) {
           return self.store.put(page[0], buf, cb)
         }
         var sp = self._splitPointPage(buf, page[1])
-        throw new Error('update region...')
+        if (!region) {
+          var pbuf = self._createRegionPage()
+          var left = self._available()
+          var lbuf = self._createPointPage()
+          self._addPoints(lbuf, sp.left.concat(pt))
+
+          var right = self._available()
+          var rbuf = self._createPointPage()
+          self._addPoints(rbuf, sp.right)
+
+          self._addRegions(pbuf, [[left,sp.left],[right,sp.right]])
+          pending = 3
+          self.store.put(page[0], pbuf, done)
+          self.store.put(left, lbuf, done)
+          self.store.put(right, rbuf, done)
         /*
-        if (self._addRegion(region, sp.left, sp.right)) {
-          self.store.put(self._available(), 
-            sp.left
-          self.store.put(regionPage, region, done)
+        } else if (self._addRegions(region, [sp.left, sp.right])) {
+          pending = 2
+          self.store.put(self._available(), sp.left, done)
+          self.store.put(regionPage, sp.right, done)
+        */
         } else { // region overflow
           // split region, re-order
           throw new Error('handle region overflow')
         }
-        */
+      }
+      function done (err) {
+        if (err) cb(err)
+        else if (--pending === 0) cb(null)
       }
     })
   })()
 }
 
 KDB.prototype._available = function () {
-  var i = self.free++
-  self.emit('free', i)
+  var i = this.free++
+  this.emit('free', i)
+  return i
 }
 
-KDB.prototype._addRegion = function (buf, left, right) {
-  throw new Error('add region...')
+KDB.prototype._addRegions = function (buf, regions) {
+  var self = this
+  var nregions = buf.readUInt16BE(1)
+  var offset = 3 + nregions * 4
+  self.types.forEach(function (t) {
+    if (t === 'float32') {
+      offset += (4 * 2) * nregions
+    } else throw new Error('unhandled type: ' + t)
+  })
+  regions.forEach(function (r) {
+    var ex = extents(r[1])
+    for (var i = 0; i < ex.length; i++) {
+      var t = self.types[i]
+      if (t === 'float32') {
+        buf.writeFloatBE(ex[0], offset)
+        buf.writeFloatBE(ex[1], offset+4)
+        offset += 8
+      } else throw new Error('unsupported type: ' + t)
+    }
+    buf.writeUInt32BE(r[0], offset)
+    offset += 4
+  })
   return true
 }
 
@@ -233,6 +273,7 @@ KDB.prototype._splitPointPage = function (buf, depth) {
       } else throw new Error('unsupported type: ' + t)
       pt.push(p)
     }
+    pt.push(buf.readUInt32BE(offset))
     offset += 4
     points.push(pt)
     coords.push(pt[d])
@@ -254,7 +295,15 @@ KDB.prototype._createPointPage = function () {
   return buf
 }
 
-KDB.prototype._addPoint = function (buf, pt) {
+KDB.prototype._createRegionPage = function (left, right) {
+  var self = this
+  var buf = new Buffer(self.size)
+  buf[0] = REGION
+  buf.writeUInt32BE(0, 1)
+  return buf
+}
+
+KDB.prototype._addPoints = function (buf, pts) {
   var self = this
   var npoints = buf.readUInt16BE(1)
   var len = self.types.length
@@ -269,16 +318,20 @@ KDB.prototype._addPoint = function (buf, pt) {
     }
     offset += 4
   }
-  for (var j = 0; j < pt.length - 1; j++) {
-    var t = self.types[j]
-    if (t === 'float32') {
-      if (offset > buf.length) return false // overflow
-      buf.writeFloatBE(pt[j], offset)
-      offset += 4
-    } else throw new Error('unknown type: ' + t)
+  for (var k = 0; k < pts.length; k++) {
+    var pt = pts[k]
+    for (var j = 0; j < pt.length - 1; j++) {
+      var t = self.types[j]
+      if (t === 'float32') {
+        if (offset > buf.length) return false // overflow
+        buf.writeFloatBE(pt[j], offset)
+        offset += 4
+      } else throw new Error('unknown type: ' + t)
+    }
+    if (offset + 4 > buf.length) return false // overflow
+    buf.writeUInt32BE(pt[j], offset)
+    offset += 4
   }
-  if (offset + 4 > buf.length) return false // overflow
-  buf.writeUInt32BE(pt[j], offset)
   buf.writeUInt16BE(npoints+1, 1)
   return true // no overflow
 }
@@ -288,3 +341,17 @@ function ltf32 (a, b) { return a < b && !almostEqual(a, b, FLT, FLT) }
 function ltef32 (a, b) { return a < b || almostEqual(a, b, FLT, FLT) }
 function gtf32 (a, b) { return a > b && !almostEqual(a, b, FLT, FLT) }
 function gtef32 (a, b) { return a > b || almostEqual(a, b, FLT, FLT) }
+
+function extents (pts) {
+  var bbox = []
+  for (var i = 0; i < pts[0].length-1; i++) {
+    bbox[i] = [ pts[0][i], pts[0][i] ]
+  }
+  for (var i = 1; i < pts.length; i++) {
+    for (var j = 0; j < pts[i].length-1; j++) {
+      if (pts[i] < bbox[j]) bbox[j][0] = pts[i][j]
+      if (pts[i] > bbox[j]) bbox[j][1] = pts[i][j]
+    }
+  }
+  return bbox
+}
