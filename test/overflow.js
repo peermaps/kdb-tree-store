@@ -30,8 +30,12 @@ test('overflow', function (t) {
       kdb.query([x,y,z], function (err, pts) {
         t.ifError(err)
         t.equal(pts.length, 1)
-        approx(t, pts[0], [x,y,z,loc])
-        t.equal(pts[0][3], loc)
+        if (pts.length === 0) {
+          t.fail('empty result')
+        } else {
+          approx(t, pts[0], [x,y,z,loc])
+          t.equal(pts[0][3], loc)
+        }
         if (--pending === 0) check()
       })
     })
