@@ -10,7 +10,6 @@ var file = path.join(tmpdir, 'kdb-tree-' + Math.random())
 
 test('points', function (t) {
   var n = 20
-  t.plan(n*(2+4+2) + 2)
   var kdb = kdbtree({
     types: [ 'float32', 'float32', 'float32' ],
     size: 4096,
@@ -40,11 +39,15 @@ test('points', function (t) {
   function check () {
     kdb.query([[15,50],[-60,10],[50,100]], function (err, pts) {
       t.ifError(err)
-      t.deepEqual(pts, data.filter(function (pt) {
+      var expected = data.filter(function (pt) {
         return pt[0] >= 15 && pt[0] <= 50
           && pt[1] >= -60 && pt[1] <= 10
           && pt[2] >= 50 && pt[2] <= 100
-      }))
+      })
+      for (var i = 0; i < Math.max(pts.length, expected.length); i++) {
+        approx(t, pts[i], expected[i])
+      }
+      t.end()
     })
   }
 })
