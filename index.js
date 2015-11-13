@@ -51,7 +51,7 @@ KDB.prototype.query = function (rquery, cb) {
         self._parseRegion(buf, q.query, pages, page[1])
         read()
       } else if (buf[0] === POINT) {
-        var pts = self._parsePoint(buf, page[1], q)
+        var pts = self._parsePoints(buf, page[1], q)
         if (pts.length === 0) read()
         for (var i = 0; i < pts.length; i++) results.push(pts[i])
       }
@@ -88,7 +88,7 @@ KDB.prototype._parseRegion = function (buf, query, pages, depth) {
   }
 }
 
-KDB.prototype._parsePoint = function (buf, depth, query) {
+KDB.prototype._parsePoints = function (buf, depth, query) {
   var self = this
   var npoints = buf.readUInt16BE(1)
   var len = self.types.length
@@ -105,7 +105,7 @@ KDB.prototype._parsePoint = function (buf, depth, query) {
       } else throw new Error('unsupported type: ' + t)
       if (!m) continue
       var qj = query.query[j]
-      if (ltf32(qj[0], p) || gtf32(qj[1], p)) m = false
+      if (ltf32(p, qj[0]) || gtf32(p, qj[1])) m = false
       pt.push(p)
     }
     if (m && query.filter(pt)) {
