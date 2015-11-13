@@ -74,7 +74,7 @@ KDB.prototype._parseRegion = function (buf, query, pages, depth) {
       if (d && tt === 'float32') {
         var min = buf.readFloatBE(offset)
         var max = buf.readFloatBE(offset + 4)
-        if (ltef32(q[0], max) && gtef32(q[1], min)) match = true
+        if (contains(q[0], q[1], min, max)) match = true
       }
       if (tt === 'float32') {
         offset += 4 + 4
@@ -163,12 +163,12 @@ KDB.prototype._insert = function (pt, cb) {
   var self = this
   cb = once(cb || noop)
   var query = []
-  for (var i = 0; i < pt.length - 1; i++) query.push(pt[i], pt[i])
+  for (var i = 0; i < pt.length - 1; i++) query.push([pt[i], pt[i]])
   var pages = [ [ self.root, 0 ] ]
   var region = null, regionPage = null
 
   ;(function read () {
-    if (pages.length === 0) return results.push(null)
+    if (pages.length === 0) return cb(null)
     var page = pages.shift()
     self.store.get(page[0], function (err, buf) {
       if (err) return cb(err)
@@ -341,9 +341,9 @@ KDB.prototype._addPoints = function (buf, pts) {
 
 function noop () {}
 function ltf32 (a, b) { return a < b && !almostEqual(a, b, FLT, FLT) }
-function ltef32 (a, b) { return a < b || almostEqual(a, b, FLT, FLT) }
+function ltef32 (a, b) { return a <= b || almostEqual(a, b, FLT, FLT) }
 function gtf32 (a, b) { return a > b && !almostEqual(a, b, FLT, FLT) }
-function gtef32 (a, b) { return a > b || almostEqual(a, b, FLT, FLT) }
+function gtef32 (a, b) { return a >= b || almostEqual(a, b, FLT, FLT) }
 
 function extents (pts) {
   var bbox = []
@@ -357,4 +357,10 @@ function extents (pts) {
     }
   }
   return bbox
+}
+
+function contains (qmin, qmax, min, max) {
+  return (gtef32(qmin, min) && ltef32(qmin, max))
+    || (gtef32(qmax, min) && ltef32(qmax, max))
+    || (ltf32(qmin, min) && gtf32(qmax, max))
 }
