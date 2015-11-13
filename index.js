@@ -3,6 +3,7 @@ var collect = require('./lib/collect.js')
 var dist = require('euclidean-distance')
 var inherits = require('inherits')
 var EventEmitter = require('events').EventEmitter
+var median = require('median')
 
 var almostEqual = require('almost-equal')
 var FLT = almostEqual.FLT_EPSILON
@@ -217,9 +218,11 @@ KDB.prototype._addRegion = function (buf, left, right) {
 KDB.prototype._splitPointPage = function (buf, depth) {
   var self = this
   var len = self.types.length
+  var offset = 3
   var npoints = buf.readUInt16BE(1)
   var d = depth % len
   var points = [], coords = []
+
   for (var i = 0; i < npoints; i++) {
     var pt = []
     for (var j = 0; j < len; j++) {
@@ -230,6 +233,7 @@ KDB.prototype._splitPointPage = function (buf, depth) {
       } else throw new Error('unsupported type: ' + t)
       pt.push(p)
     }
+    offset += 4
     points.push(pt)
     coords.push(pt[d])
   }
@@ -273,7 +277,7 @@ KDB.prototype._addPoint = function (buf, pt) {
       offset += 4
     } else throw new Error('unknown type: ' + t)
   }
-  if (offset > buf.length) return false // overflow
+  if (offset + 4 > buf.length) return false // overflow
   buf.writeUInt32BE(pt[j], offset)
   buf.writeUInt16BE(npoints+1, 1)
   return true // no overflow
