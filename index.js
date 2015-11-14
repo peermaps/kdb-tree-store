@@ -246,6 +246,11 @@ KDB.prototype._insert = function (pt, cb) {
       self.store.put(left, lbuf, done)
       self.store.put(right, rbuf, done)
     } else {
+      var rs = self._splitRegionPage(lr[0], (page[0]+1)%len)
+      var par = self._createRegionPage()
+      for (var i = 0; i < rs.length; i++) {
+        console.log('STORE', rs[i])
+      }
       throw new Error('handle region overflow')
     }
   }
@@ -260,6 +265,29 @@ KDB.prototype._available = function () {
   var i = this.free++
   this.emit('free', i)
   return i
+}
+
+KDB.prototype._splitRegionPage = function (buf, axis) {
+  var self = this
+  var left = [], right = []
+  var offset = 3
+  var nregions = buf.readUInt16BE(1)
+  var len = self.types.length
+  var coords = []
+console.log(nregions) 
+  for (var i = 0; i < nregions; i++) {
+    for (var j = 0; j < len; j++) {
+      var t = self.types[j]
+      if (t === 'float32') {
+        var min = buf.readFloatBE(offset)
+        var max = buf.readFloatBE(offset+4)
+        console.log(i, min, max)
+        offset += 8
+      } else throw new Error('unhandled type: ' + t)
+    }
+    offset += 4
+  }
+  return { left: left, right: right }
 }
 
 KDB.prototype._addRegions = function (buf, regions) {
