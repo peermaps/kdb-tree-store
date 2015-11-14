@@ -205,47 +205,51 @@ KDB.prototype._insert = function (pt, cb) {
         regionPage = page[0]
         read()
       } else if (buf[0] === POINT) {
-        if (self._addPoints(buf, [pt])) {
-          return self.store.put(page[0], buf, cb)
-        }
-        if (!region) return cb(new Error('expected parent region page'))
-        var sp = self._splitPointPage(buf, page[1])
-        var d = (page[1]-1+len) % len
-
-        if (pt[d] < sp.pivot) sp.left.push(pt)
-        else sp.right.push(pt)
-
-        var lbuf = self._createPointPage()
-        var rbuf = self._createPointPage()
-        self._addPoints(lbuf, sp.left)
-        self._addPoints(rbuf, sp.right)
-
-        var left = page[0], right = self._available()
-        var r = self._removeRegion(region, page[0])
-
-        var exleft = [], exright = []
-        for (var i = 0; i < len; i++) {
-          if (i === d) {
-            exleft.push([r[i][0], sp.pivot])
-            exright.push([sp.pivot, r[i][1]])
-          } else {
-            exleft.push(r[i])
-            exright.push(r[i])
-          }
-        }
-
-        if (!self._addRegions(region, [[left,exleft], [right,exright]])) {
-          throw new Error('handle region overflow')
-        }
-
-        pending = 3
-        self.store.put(regionPage, region, done)
-        self.store.put(left, lbuf, done)
-        self.store.put(right, rbuf, done)
-
+        handlePoint(buf, page)
       } else cb(new Error('unrecognized page type: ' + buf[0]))
     })
   })()
+
+  function handlePoint (buf, page) {
+    if (self._addPoints(buf, [pt])) {
+      return self.store.put(page[0], buf, cb)
+    }
+    if (!region) return cb(new Error('expected parent region page'))
+    var sp = self._splitPointPage(buf, page[1])
+    var d = (page[1]-1+len) % len
+
+    if (pt[d] < sp.pivot) sp.left.push(pt)
+    else sp.right.push(pt)
+
+    var lbuf = self._createPointPage()
+    var rbuf = self._createPointPage()
+    self._addPoints(lbuf, sp.left)
+    self._addPoints(rbuf, sp.right)
+
+    var left = page[0], right = self._available()
+    var r = self._removeRegion(region, page[0])
+
+    var exleft = [], exright = []
+    for (var i = 0; i < len; i++) {
+      if (i === d) {
+        exleft.push([r[i][0], sp.pivot])
+        exright.push([sp.pivot, r[i][1]])
+      } else {
+        exleft.push(r[i])
+        exright.push(r[i])
+      }
+    }
+
+    if (self._addRegions(region, [[left,exleft], [right,exright]])) {
+      pending = 3
+      self.store.put(regionPage, region, done)
+      self.store.put(left, lbuf, done)
+      self.store.put(right, rbuf, done)
+    } else {
+      throw new Error('handle region overflow')
+    }
+  }
+
   function done (err) {
     if (err) cb(err)
     else if (--pending === 0) cb(null)
