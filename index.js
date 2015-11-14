@@ -31,18 +31,15 @@ function KDB (opts) {
 
   this._ptsize = 4
   this._rsize = 4
-  this._maxpts = [[],[]]
+  this._maxext = []
   for (var i = 0; i < this.types.length; i++) {
     var t = this.types[i]
     if (t === 'float32') {
       this._ptsize += 4
       this._rsize += 8
-      this._maxpts[0].push(-Infinity)
-      this._maxpts[1].push(Infinity)
+      this._maxext.push([-Infinity, Infinity])
     } else throw new Error('unhandled type: ' + t)
   }
-  this._maxpts[0].push(0)
-  this._maxpts[1].push(0)
 }
 
 KDB.prototype.query = function (rquery, cb) {
@@ -194,7 +191,7 @@ KDB.prototype._insert = function (pt, cb) {
         var pbuf = self._createPointPage()
         self._available()
         var npt = self._available()
-        self._addRegions(rbuf, [[npt,self._maxpts]])
+        self._addRegions(rbuf, [[npt,self._maxext]])
         self._addPoints(pbuf, [pt])
         pending = 2
         self.store.put(self.root, rbuf, done)
@@ -220,8 +217,21 @@ KDB.prototype._insert = function (pt, cb) {
         self._addPoints(rbuf, sp.right)
 
         var left = page[0], right = self._available()
-        self._removeRegion(region, page[0])
-        if (!self._addRegions(region, [[left,sp.left],[right,sp.right]])) {
+        var r = self._removeRegion(region, page[0])
+        var d = (page[1]-1+len) % len
+
+        var exleft = [], exright = []
+        for (var i = 0; i < len; i++) {
+          if (i === d) {
+            exleft.push([r[i][0], sp.pivot])
+            exright.push([sp.pivot, r[i][1]])
+          } else {
+            exleft.push(r[i])
+            exright.push(r[i])
+          }
+        }
+
+        if (!self._addRegions(region, [[left,exleft], [right,exright]])) {
           throw new Error('handle region overflow')
         }
 
@@ -253,8 +263,7 @@ KDB.prototype._addRegions = function (buf, regions) {
     return false // overflow
   }
   for (var i = 0; i < regions.length; i++) {
-    var r = regions[i]
-    var ex = extents(r[1])
+    var r = regions[i], ex = r[1]
     for (var j = 0; j < ex.length; j++) {
       var t = self.types[j]
       if (t === 'float32') {
@@ -272,13 +281,25 @@ KDB.prototype._addRegions = function (buf, regions) {
 
 KDB.prototype._removeRegion = function (buf, loc) {
   var self = this
+  var len = self.types.length
   var nregions = buf.readUInt16BE(1)
   var offset = 3
   for (var i = 0; i < nregions; i++) {
-    if (buf.readUInt32BE(offset + self._rsize - 4) === 0) {
-      buf.slice(offset + self._rsize).copy(buf, offset)
+    if (buf.readUInt32BE(offset + self._rsize - 4) === loc) {
+      var r = []
+      for (var j = 0; j < len; j++) {
+        var t = self.types[j]
+        if (t === 'float32') {
+          var min = buf.readFloatBE(offset)
+          var max = buf.readFloatBE(offset+4)
+          r.push([min, max])
+          offset += 8
+        } else throw new Error('unhandled type: ' + t)
+      }
+      offset += 4
+      buf.slice(offset).copy(buf, offset - self._rsize)
       buf.writeUInt16BE(nregions-1, 1)
-      break
+      return r
     }
     offset += self._rsize
   }
