@@ -30,10 +30,14 @@ function KDB (opts) {
   this._pending = 0
 
   this._ptsize = 4
+  this._rsize = 4
+  this._maxpts = []
   for (var i = 0; i < this.types.length; i++) {
     var t = this.types[i]
     if (t === 'float32') {
       this._ptsize += 4
+      this._rsize += 8
+      this._maxpts.push([Infinity,-Infinity])
     } else throw new Error('unhandled type: ' + t)
   }
 }
@@ -174,6 +178,7 @@ KDB.prototype._insert = function (pt, cb) {
   for (var i = 0; i < pt.length - 1; i++) query.push([pt[i], pt[i]])
   var pages = [ [ self.root, 0 ] ]
   var region = null, regionPage = null
+  var pending = 0
 
   ;(function read () {
     if (pages.length === 0) return cb(null)
@@ -181,13 +186,18 @@ KDB.prototype._insert = function (pt, cb) {
     self.store.get(page[0], function (err, buf) {
       if (err) return cb(err)
       if (buf.length === 0 && self.root === page[0]) {
+        var rbuf = self._createRegionPage()
         var pbuf = self._createPointPage()
+        var npt = self._available()
+        self._addRegions(rbuf, [[npt,self._maxpts]])
         self._addPoints(pbuf, [pt])
-        return self.store.put(self._available(), pbuf, cb)
+        pending = 2
+        self.store.put(self.root, rbuf, done)
+        self.store.put(npt, pbuf, done)
+        return
       } else if (buf.length === 0) {
         return cb(new Error('empty page: ' + page[0]))
       }
-      var pending = 0
       if (buf[0] === REGION) {
         self._parseRegion(buf, query, pages, page[1])
         region = buf
@@ -224,12 +234,12 @@ KDB.prototype._insert = function (pt, cb) {
           throw new Error('handle region overflow')
         }
       }
-      function done (err) {
-        if (err) cb(err)
-        else if (--pending === 0) cb(null)
-      }
     })
   })()
+  function done (err) {
+    if (err) cb(err)
+    else if (--pending === 0) cb(null)
+  }
 }
 
 KDB.prototype._available = function () {
@@ -241,27 +251,24 @@ KDB.prototype._available = function () {
 KDB.prototype._addRegions = function (buf, regions) {
   var self = this
   var nregions = buf.readUInt16BE(1)
-  var offset = 3 + nregions * 4
-  self.types.forEach(function (t) {
-    if (t === 'float32') {
-      offset += (4 * 2) * nregions
-    } else throw new Error('unhandled type: ' + t)
-  })
-  if (offset > buf.length) return false // overflow
-  regions.forEach(function (r) {
+  var offset = 3 + nregions * self._rsize
+  if (offset + self._rsize * regions.length > buf.length) {
+    return false // overflow
+  }
+  for (var i = 0; i < regions.length; i++) {
+    var r = regions[i]
     var ex = extents(r[1])
-    for (var i = 0; i < ex.length; i++) {
-      var t = self.types[i]
+    for (var j = 0; j < ex.length; j++) {
+      var t = self.types[j]
       if (t === 'float32') {
-        buf.writeFloatBE(ex[i][0], offset)
-        buf.writeFloatBE(ex[i][1], offset+4)
+        buf.writeFloatBE(ex[j][0], offset)
+        buf.writeFloatBE(ex[j][1], offset+4)
         offset += 8
-      } else throw new Error('unsupported type: ' + t)
+      } else throw new Error('unhandled type: ' + t)
     }
     buf.writeUInt32BE(r[0], offset)
     offset += 4
-    if (offset > buf.length) return false // overflow
-  })
+  }
   buf.writeUInt16BE(nregions + regions.length, 1)
   return true
 }
