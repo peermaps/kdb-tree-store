@@ -31,15 +31,18 @@ function KDB (opts) {
 
   this._ptsize = 4
   this._rsize = 4
-  this._maxpts = []
+  this._maxpts = [[],[]]
   for (var i = 0; i < this.types.length; i++) {
     var t = this.types[i]
     if (t === 'float32') {
       this._ptsize += 4
       this._rsize += 8
-      this._maxpts.push([Infinity,-Infinity])
+      this._maxpts[0].push(-Infinity)
+      this._maxpts[1].push(Infinity)
     } else throw new Error('unhandled type: ' + t)
   }
+  this._maxpts[0].push(0)
+  this._maxpts[1].push(0)
 }
 
 KDB.prototype.query = function (rquery, cb) {
@@ -188,13 +191,13 @@ KDB.prototype._insert = function (pt, cb) {
       if (buf.length === 0 && self.root === page[0]) {
         var rbuf = self._createRegionPage()
         var pbuf = self._createPointPage()
+        self._available()
         var npt = self._available()
         self._addRegions(rbuf, [[npt,self._maxpts]])
         self._addPoints(pbuf, [pt])
         pending = 2
         self.store.put(self.root, rbuf, done)
-        self.store.put(npt, pbuf, done)
-        return
+        return self.store.put(npt, pbuf, done)
       } else if (buf.length === 0) {
         return cb(new Error('empty page: ' + page[0]))
       }
@@ -209,6 +212,7 @@ KDB.prototype._insert = function (pt, cb) {
         }
         var sp = self._splitPointPage(buf, page[1])
         if (!region) {
+throw new Error('should always be a region page now')
           var pbuf = self._createRegionPage()
           var left = self._available()
           var lbuf = self._createPointPage()
