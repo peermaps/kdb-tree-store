@@ -178,7 +178,7 @@ KDB.prototype._insert = function (pt, cb) {
   for (var i = 0; i < pt.length - 1; i++) query.push([pt[i], pt[i]])
   var pages = [ [ self.root, 0 ] ]
   var len = self.types.length
-  var region = null, regionPage = null
+  var regions = []
   var pending = 0
 
   ;(function read () {
@@ -201,8 +201,7 @@ KDB.prototype._insert = function (pt, cb) {
       }
       if (buf[0] === REGION) {
         self._parseRegion(buf, query, pages, page[1])
-        region = buf
-        regionPage = page[0]
+        regions.push([buf,page[0]])
         read()
       } else if (buf[0] === POINT) {
         handlePoint(buf, page)
@@ -214,7 +213,8 @@ KDB.prototype._insert = function (pt, cb) {
     if (self._addPoints(buf, [pt])) {
       return self.store.put(page[0], buf, cb)
     }
-    if (!region) return cb(new Error('expected parent region page'))
+    if (!regions.length) return cb(new Error('expected parent region page'))
+    var lr = regions[regions.length-1]
     var sp = self._splitPointPage(buf, page[1])
     var d = (page[1]-1+len) % len
 
@@ -227,7 +227,7 @@ KDB.prototype._insert = function (pt, cb) {
     self._addPoints(rbuf, sp.right)
 
     var left = page[0], right = self._available()
-    var r = self._removeRegion(region, page[0])
+    var r = self._removeRegion(lr[0], page[0])
 
     var exleft = [], exright = []
     for (var i = 0; i < len; i++) {
@@ -240,9 +240,9 @@ KDB.prototype._insert = function (pt, cb) {
       }
     }
 
-    if (self._addRegions(region, [[left,exleft], [right,exright]])) {
+    if (self._addRegions(lr[0], [[left,exleft], [right,exright]])) {
       pending = 3
-      self.store.put(regionPage, region, done)
+      self.store.put(lr[1], lr[0], done)
       self.store.put(left, lbuf, done)
       self.store.put(right, rbuf, done)
     } else {
