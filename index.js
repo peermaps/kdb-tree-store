@@ -210,15 +210,18 @@ KDB.prototype._insert = function (pt, cb) {
         }
         if (!region) return cb(new Error('expected parent region page'))
         var sp = self._splitPointPage(buf, page[1])
+        var d = (page[1]-1+len) % len
+
+        if (pt[d] < sp.pivot) sp.left.push(pt)
+        else sp.right.push(pt)
 
         var lbuf = self._createPointPage()
         var rbuf = self._createPointPage()
-        self._addPoints(lbuf, sp.left.concat(pt))
+        self._addPoints(lbuf, sp.left)
         self._addPoints(rbuf, sp.right)
 
         var left = page[0], right = self._available()
         var r = self._removeRegion(region, page[0])
-        var d = (page[1]-1+len) % len
 
         var exleft = [], exright = []
         for (var i = 0; i < len; i++) {
@@ -372,7 +375,7 @@ KDB.prototype._addPoints = function (buf, pts) {
     buf.writeUInt32BE(pt[j], offset)
     offset += 4
   }
-  buf.writeUInt16BE(npoints+1, 1)
+  buf.writeUInt16BE(npoints + pts.length, 1)
   return true // no overflow
 }
 
