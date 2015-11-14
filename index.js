@@ -180,6 +180,7 @@ KDB.prototype._insert = function (pt, cb) {
   var query = []
   for (var i = 0; i < pt.length - 1; i++) query.push([pt[i], pt[i]])
   var pages = [ [ self.root, 0 ] ]
+  var len = self.types.length
   var region = null, regionPage = null
   var pending = 0
 
@@ -210,34 +211,26 @@ KDB.prototype._insert = function (pt, cb) {
         if (self._addPoints(buf, [pt])) {
           return self.store.put(page[0], buf, cb)
         }
+        if (!region) return cb(new Error('expected parent region page'))
         var sp = self._splitPointPage(buf, page[1])
-        if (!region) {
-throw new Error('should always be a region page now')
-          var pbuf = self._createRegionPage()
-          var left = self._available()
-          var lbuf = self._createPointPage()
-          self._addPoints(lbuf, sp.left.concat(pt))
 
-          var right = self._available()
-          var rbuf = self._createPointPage()
-          self._addPoints(rbuf, sp.right)
+        var lbuf = self._createPointPage()
+        var rbuf = self._createPointPage()
+        self._addPoints(lbuf, sp.left.concat(pt))
+        self._addPoints(rbuf, sp.right)
 
-          self._addRegions(pbuf, [[left,sp.left],[right,sp.right]])
-          pending = 3
-          self.store.put(page[0], pbuf, done)
-          self.store.put(left, lbuf, done)
-          self.store.put(right, rbuf, done)
-        /*
-        } else if (self._addRegions(region, [sp.left, sp.right])) {
-          pending = 2
-          self.store.put(self._available(), sp.left, done)
-          self.store.put(regionPage, sp.right, done)
-        */
-        } else { // region overflow
-          // split region, re-order
+        var left = page[0], right = self._available()
+        self._removeRegion(region, page[0])
+        if (!self._addRegions(region, [[left,sp.left],[right,sp.right]])) {
           throw new Error('handle region overflow')
         }
-      }
+
+        pending = 3
+        self.store.put(regionPage, region, done)
+        self.store.put(left, lbuf, done)
+        self.store.put(right, rbuf, done)
+
+      } else cb(new Error('unrecognized page type: ' + buf[0]))
     })
   })()
   function done (err) {
@@ -277,6 +270,20 @@ KDB.prototype._addRegions = function (buf, regions) {
   return true
 }
 
+KDB.prototype._removeRegion = function (buf, loc) {
+  var self = this
+  var nregions = buf.readUInt16BE(1)
+  var offset = 3
+  for (var i = 0; i < nregions; i++) {
+    if (buf.readUInt32BE(offset + self._rsize - 4) === 0) {
+      buf.slice(offset + self._rsize).copy(buf, offset)
+      buf.writeUInt16BE(nregions-1, 1)
+      break
+    }
+    offset += self._rsize
+  }
+}
+
 KDB.prototype._splitPointPage = function (buf, depth) {
   var self = this
   var len = self.types.length
@@ -306,7 +313,7 @@ KDB.prototype._splitPointPage = function (buf, depth) {
     if (points[i][d] < pivot) left.push(points[i])
     else right.push(points[i])
   }
-  return { left: left, right: right }
+  return { left: left, right: right, pivot: pivot }
 }
 
 KDB.prototype._createPointPage = function () {
