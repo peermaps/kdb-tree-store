@@ -8,7 +8,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git://github.com/substack/kdb-tree.git"
+    "url": "git://github.com/peermaps/kdb-tree.git"
   },
   "keywords": [
     "kdb",
@@ -22,9 +22,9 @@
   "author": "substack",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/substack/kdb-tree/issues"
+    "url": "https://github.com/peermaps/kdb-tree/issues"
   },
-  "homepage": "https://github.com/substack/kdb-tree#readme",
+  "homepage": "https://github.com/peermaps/kdb-tree#readme",
   "devDependencies": {
     "fd-chunk-store": "^1.1.0",
     "tape": "^4.2.2"
