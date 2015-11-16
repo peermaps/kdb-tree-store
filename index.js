@@ -129,6 +129,25 @@ KDB.prototype._parsePoints = function (buf, depth, query) {
   return results
 }
 
+KDB.prototype._median = function (buf, d) {
+  var self = this
+  var npoints = buf.readUInt16BE(1)
+  var len = self.types.length
+  var offset = 3
+  var coords = []
+  for (var i = 0; i < npoints; i++) {
+    for (var j = 0; j < len; j++) {
+      var t = self.types[j % len]
+      if (t === 'float32') {
+        if (j === d) coords.push(buf.readFloatBE(offset))
+        offset += 4
+      } else throw new Error('unsupported type: ' + t)
+    }
+    offset += 4
+  }
+  return median(coords)
+}
+
 function normq (q) {
   var query = [], filter = ftrue
   if (Array.isArray(q)) {
@@ -211,7 +230,7 @@ KDB.prototype._insert = function (pt, cb) {
 
   function handlePoint (buf, page) {
     if (self._addPoints(buf, [pt])) {
-      return self.store.put(page[0], buf, cb)
+      return self.store.put(page[0], buf, cb) // no overflow
     }
     if (!regions.length) return cb(new Error('expected parent region page'))
     var lr = regions[regions.length-1]
@@ -246,12 +265,10 @@ KDB.prototype._insert = function (pt, cb) {
       self.store.put(left, lbuf, done)
       self.store.put(right, rbuf, done)
     } else {
-      var rs = self._splitRegionPage(lr[0], (page[0]+1)%len)
-      var par = self._createRegionPage()
-      for (var i = 0; i < rs.length; i++) {
-        console.log('STORE', rs[i])
-      }
-      throw new Error('handle region overflow')
+      var dim = (page[0]+1) % len
+      var pivot = self._median(buf, dim)
+      self._split(lr[0], dim, pivot, cb)
+      //throw new Error('handle region overflow')
     }
   }
 
@@ -267,27 +284,39 @@ KDB.prototype._available = function () {
   return i
 }
 
-KDB.prototype._splitRegionPage = function (buf, axis) {
+KDB.prototype._split = function (buf, axis, cb) {
   var self = this
   var left = [], right = []
   var offset = 3
   var nregions = buf.readUInt16BE(1)
   var len = self.types.length
   var coords = []
-console.log(nregions) 
-  for (var i = 0; i < nregions; i++) {
-    for (var j = 0; j < len; j++) {
-      var t = self.types[j]
-      if (t === 'float32') {
-        var min = buf.readFloatBE(offset)
-        var max = buf.readFloatBE(offset+4)
-        console.log(i, min, max)
-        offset += 8
-      } else throw new Error('unhandled type: ' + t)
+  var pivot = self._median(buf, axis)
+
+  ;(function read (err, buf) {
+    for (var i = 0; i < nregions; i++) {
+      var pt = []
+      for (var j = 0; j < len; j++) {
+        var t = self.types[j]
+        if (t === 'float32') {
+          var min = buf.readFloatBE(offset)
+          var max = buf.readFloatBE(offset+4)
+          if (axis === j) {
+            if (ltef32(pivot, min) && ltef32(pivot, max)) {
+              console.log('LEFT')
+            } else if (gtef32(pivot, min) && gtef32(pivot, max)) {
+              console.log('RIGHT')
+            } else {
+              console.log('RECURSIVE SPLIT!')
+              console.log(i, min, max)
+            }
+          }
+          offset += 8
+        } else throw new Error('unhandled type: ' + t)
+      }
+      offset += 4
     }
-    offset += 4
-  }
-  return { left: left, right: right }
+  })(null, buf)
 }
 
 KDB.prototype._addRegions = function (buf, regions) {
