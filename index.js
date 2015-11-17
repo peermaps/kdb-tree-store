@@ -266,8 +266,7 @@ KDB.prototype._insert = function (pt, cb) {
       self.store.put(right, rbuf, done)
     } else {
       var dim = (page[0]+1) % len
-      var pivot = self._median(buf, dim)
-      self._split(lr[0], dim, pivot, cb)
+      self._split(regions, dim, cb)
       //throw new Error('handle region overflow')
     }
   }
@@ -284,18 +283,42 @@ KDB.prototype._available = function () {
   return i
 }
 
-KDB.prototype._split = function (buf, axis, cb) {
+KDB.prototype._split = function (regions, axis, cb) {
   var self = this
-  var left = [], right = []
   var offset = 3
-  var nregions = buf.readUInt16BE(1)
+  var nregions = regions[0][0].readUInt16BE(1)
   var len = self.types.length
   var coords = []
-  var pivot = self._median(buf, axis)
+  var pivot = self._median(regions[0][0], axis)
 
-  ;(function read (err, buf) {
+  var start = 0, end = 4
+  for (var j = 0; j < len; j++) {
+    var t = self.types[j]
+    if (t === 'float32') {
+      if (j < axis) start += 4
+      end += 4
+    } else throw new Error('unhandled type: ' + t)
+  }
+
+  ;(function read (r, cb) {
+    var buf = regions[r][0], n = regions[r][1]
+    var left = [], right = []
+    if (buf[0] === POINT) {
+      var sp = splitPoints(buf)
+      var pending = 3
+      var done = function (err) {
+        if (err) cb(err)
+        else if (--pending === 0) cb()
+      }
+      var ln = n, rn = self._available()
+      self.put(ln, sp.left, done)
+      self.put(rn, sp.right, done)
+      self.put(regions[r-1][1],  done)
+      return
+    }
+
     for (var i = 0; i < nregions; i++) {
-      var pt = []
+      var pt = [], sort = 0
       for (var j = 0; j < len; j++) {
         var t = self.types[j]
         if (t === 'float32') {
@@ -304,19 +327,61 @@ KDB.prototype._split = function (buf, axis, cb) {
           if (axis === j) {
             if (ltef32(pivot, min) && ltef32(pivot, max)) {
               console.log('LEFT')
+              sort = -1
             } else if (gtef32(pivot, min) && gtef32(pivot, max)) {
               console.log('RIGHT')
+              sort = 1
             } else {
               console.log('RECURSIVE SPLIT!')
-              console.log(i, min, max)
+              sort = 0
             }
           }
           offset += 8
         } else throw new Error('unhandled type: ' + t)
       }
+      if (sort === 0) {
+        var loc = buf.readUInt32BE(offset)
+        self.store.get(loc, function (err, buf) {
+          read(buf, loc, cb)
+        })
+      } else if (sort < 0) {
+        left.push(loc)
+      } else if (sort > 0) {
+        right.push(loc)
+      }
       offset += 4
     }
-  })(null, buf)
+  })(regions.length-1, cb)
+
+  function splitPoints (buf) {
+    var o = 3, npts = buf.readUInt16BE(1)
+    var t = self.types[axis]
+    var left = self._createPointPage()
+    var right = self._createPointPage()
+    var lcount = 0, rcount = 0
+    var loffset = 3, roffset = 3
+
+    for (var i = 0; i < npts; i++) {
+      if (t === 'float32') {
+        var p = buf.readFloatBE(o + start)
+        if (p < pivot) {
+          console.log('LEFT', p)
+          buf.copy(left, loffset, o, o + end)
+          lcount += 1
+          loffset += end
+        } else {
+          console.log('RIGHT', p)
+          buf.copy(right, roffset, o, o + end)
+          rcount += 1
+          roffset += end
+        }
+      } else throw new Error('unhandled type: ' + t)
+      o += end
+    }
+    left.writeUInt16BE(lcount, 1)
+    right.writeUInt16BE(rcount, 1)
+    return { left: left, right: right }
+  }
 }
 
 KDB.prototype._addRegions = function (buf, regions) {
