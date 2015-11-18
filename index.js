@@ -304,7 +304,7 @@ KDB.prototype._split = function (regions, axis, cb) {
     var buf = regions[r][0], n = regions[r][1]
     var left = [], right = []
     if (buf[0] === POINT) {
-      var sp = splitPoints(buf)
+      var sp = self._splitPointPage(buf, regions.length+1, pivot)
       var pending = 3
       var done = function (err) {
         if (err) cb(err)
@@ -352,36 +352,6 @@ KDB.prototype._split = function (regions, axis, cb) {
       offset += 4
     }
   })(regions.length-1, cb)
-
-  function splitPoints (buf) {
-    var o = 3, npts = buf.readUInt16BE(1)
-    var t = self.types[axis]
-    var left = self._createPointPage()
-    var right = self._createPointPage()
-    var lcount = 0, rcount = 0
-    var loffset = 3, roffset = 3
-
-    for (var i = 0; i < npts; i++) {
-      if (t === 'float32') {
-        var p = buf.readFloatBE(o + start)
-        if (p < pivot) {
-          console.log('LEFT', p)
-          buf.copy(left, loffset, o, o + end)
-          lcount += 1
-          loffset += end
-        } else {
-          console.log('RIGHT', p)
-          buf.copy(right, roffset, o, o + end)
-          rcount += 1
-          roffset += end
-        }
-      } else throw new Error('unhandled type: ' + t)
-      o += end
-    }
-    left.writeUInt16BE(lcount, 1)
-    right.writeUInt16BE(rcount, 1)
-    return { left: left, right: right }
-  }
 }
 
 KDB.prototype._addRegions = function (buf, regions) {
@@ -434,30 +404,34 @@ KDB.prototype._removeRegion = function (buf, loc) {
   }
 }
 
-KDB.prototype._splitPointPage = function (buf, depth) {
+KDB.prototype._splitPointPage = function (buf, depth, pivot) {
   var self = this
   var len = self.types.length
   var offset = 3
   var npoints = buf.readUInt16BE(1)
   var d = depth % len
-  var points = [], coords = []
+  var points = []
 
-  for (var i = 0; i < npoints; i++) {
-    var pt = []
-    for (var j = 0; j < len; j++) {
-      var t = self.types[j % len]
-      if (t === 'float32') {
-        var p = buf.readFloatBE(offset)
-        offset += 4
-      } else throw new Error('unsupported type: ' + t)
-      pt.push(p)
+  if (pivot === undefined) {
+    var coords = []
+    for (var i = 0; i < npoints; i++) {
+      var pt = []
+      for (var j = 0; j < len; j++) {
+        var t = self.types[j % len]
+        if (t === 'float32') {
+          var p = buf.readFloatBE(offset)
+          offset += 4
+        } else throw new Error('unsupported type: ' + t)
+        pt.push(p)
+      }
+      pt.push(buf.readUInt32BE(offset))
+      offset += 4
+      points.push(pt)
+      coords.push(pt[d])
     }
-    pt.push(buf.readUInt32BE(offset))
-    offset += 4
-    points.push(pt)
-    coords.push(pt[d])
+    pivot = median(coords)
   }
-  var pivot = median(coords)
+
   var left = [], right = []
   for (var i = 0; i < npoints; i++) {
     if (points[i][d] < pivot) left.push(points[i])
