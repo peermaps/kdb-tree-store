@@ -135,17 +135,23 @@ KDB.prototype._median = function (buf, d) {
   var len = self.types.length
   var offset = 3
   var coords = []
+  if (buf[0] !== REGION) throw new Error('non-region median')
+
   for (var i = 0; i < npoints; i++) {
     for (var j = 0; j < len; j++) {
       var t = self.types[j % len]
       if (t === 'float32') {
-        if (j === d) coords.push(buf.readFloatBE(offset))
-        offset += 4
+        if (j === d) {
+          var min = buf.readFloatBE(offset)
+          var max = buf.readFloatBE(offset+4)
+          if (min > -Infinity && max < Infinity) coords.push((min+max)/2)
+        }
+        offset += 8
       } else throw new Error('unsupported type: ' + t)
     }
     offset += 4
   }
-  return median(coords)
+  return coords.length ? median(coords) : 0
 }
 
 function normq (q) {
@@ -267,7 +273,6 @@ KDB.prototype._insert = function (pt, cb) {
     } else {
       var dim = (page[0]+1) % len
       self._split(regions, dim, cb)
-      //throw new Error('handle region overflow')
     }
   }
 
@@ -285,73 +290,17 @@ KDB.prototype._available = function () {
 
 KDB.prototype._split = function (regions, axis, cb) {
   var self = this
-  var offset = 3
-  var nregions = regions[0][0].readUInt16BE(1)
   var len = self.types.length
-  var coords = []
   var pivot = self._median(regions[0][0], axis)
 
-  var start = 0, end = 4
-  for (var j = 0; j < len; j++) {
-    var t = self.types[j]
-    if (t === 'float32') {
-      if (j < axis) start += 4
-      end += 4
-    } else throw new Error('unhandled type: ' + t)
-  }
-
-  ;(function read (r, cb) {
-    var buf = regions[r][0], n = regions[r][1]
-    var left = [], right = []
-    if (buf[0] === POINT) {
-      var sp = self._splitPointPage(buf, regions.length+1, pivot)
-      var pending = 3
-      var done = function (err) {
-        if (err) cb(err)
-        else if (--pending === 0) cb()
-      }
-      var ln = n, rn = self._available()
-      self.put(ln, sp.left, done)
-      self.put(rn, sp.right, done)
-      self.put(regions[r-1][1],  done)
-      return
-    }
-
-    for (var i = 0; i < nregions; i++) {
-      var pt = [], sort = 0
-      for (var j = 0; j < len; j++) {
-        var t = self.types[j]
-        if (t === 'float32') {
-          var min = buf.readFloatBE(offset)
-          var max = buf.readFloatBE(offset+4)
-          if (axis === j) {
-            if (ltef32(pivot, min) && ltef32(pivot, max)) {
-              console.log('LEFT')
-              sort = -1
-            } else if (gtef32(pivot, min) && gtef32(pivot, max)) {
-              console.log('RIGHT')
-              sort = 1
-            } else {
-              console.log('RECURSIVE SPLIT!')
-              sort = 0
-            }
-          }
-          offset += 8
-        } else throw new Error('unhandled type: ' + t)
-      }
-      if (sort === 0) {
-        var loc = buf.readUInt32BE(offset)
-        self.store.get(loc, function (err, buf) {
-          read(buf, loc, cb)
-        })
-      } else if (sort < 0) {
-        left.push(loc)
-      } else if (sort > 0) {
-        right.push(loc)
-      }
-      offset += 4
-    }
-  })(regions.length-1, cb)
+  ;(function split (n, cb) {
+    self.store.get(n, function (err, buf) {
+      if (err) return cb(err)
+console.log('pivot=', pivot)
+      var sp = self._splitRegionPage(buf, axis, pivot)
+      console.log(sp)
+    })
+  })(regions[1], cb)
 }
 
 KDB.prototype._addRegions = function (buf, regions) {
@@ -438,6 +387,37 @@ KDB.prototype._splitPointPage = function (buf, depth, pivot) {
     else right.push(points[i])
   }
   return { left: left, right: right, pivot: pivot }
+}
+
+KDB.prototype._splitRegionPage = function (buf, axis, pivot) {
+  var self = this
+  var len = self.types.length
+  var offset = 3
+  var nregions = buf.readUInt16BE(1)
+
+  var left = [], right = [], center = []
+  for (var i = 0; i < nregions; i++) {
+    var region = []
+    for (var j = 0; j < len; j++) {
+      var t = self.types[j]
+      if (t === 'float32') {
+        var min = buf.readFloatBE(offset)
+        var max = buf.readFloatBE(offset+4)
+        region.push([min,max])
+        offset += 8
+      } else throw new Error('unsupported type: ' + t)
+    }
+    region.push(buf.readUInt32BE(offset))
+    offset += 4
+    if (ltf32(region[axis][0], pivot) && ltf32(region[axis][1], pivot)) {
+      left.push(region)
+    } else if (gtf32(region[axis][0], pivot) && gtf32(region[axis][1], pivot)) {
+      right.push(region)
+    } else {
+      center.push(region)
+    }
+  }
+  return { left: left, right: right, center: center }
 }
 
 KDB.prototype._createPointPage = function () {
