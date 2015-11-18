@@ -289,13 +289,13 @@ KDB.prototype._split = function (regions, axis, cb) {
   var pivot = self._median(regions[regions.length-1][0], axis)
 
   ;(function split (regions, n, cb) {
-    self.store.get(n, function (err, buf) {
+    self.store.get(regions[n][1], function (err, buf) {
       if (err) return cb(err)
       if (buf[0] === POINT) {
         var spp = self._splitPointPage(buf, axis, pivot)
         var lbuf = self._createPointPage()
         var rbuf = self._createPointPage()
-        var ln = n, rn = self._available()
+        var ln = regions[n][1], rn = self._available()
         self._addPoints(lbuf, spp.left)
         self._addPoints(rbuf, spp.right)
         var done = ndone(2, function (err) {
@@ -326,19 +326,29 @@ console.log('pivot=', pivot)
         if (!self._addRegions(rbuf, sp.right)) {
           throw new Error('right overflow!')
         }
-        var ln = n, rn = self._available()
-        var rs = [[ln,extents(sp.left)],[rn,extents(sp.right)]]
-        var r = regions[regions.length-1]
+        var ln = regions[n][1], rn = self._available()
+        var rs = []
+        if (sp.left.length) rs.push([ln,extents(sp.left)])
+        if (sp.right.length) rs.push([rn,extents(sp.right)])
+        var r = regions[n]
         if (self._addRegions(r[0], rs)) {
-          return self.store.put(r[0], r[1], cb)
+          return self.store.put(r[1], r[0], cb)
+        } else if (r[1] === self.root) {
+          var nbuf = self._createRegionPage()
+          var oroot = self._available()
+          rs.push([r[1],self._maxext]) // TODO: calculate actual root extents
+          self._addRegions(buf, rs)
+          var done = ndone(2, cb)
+          self.store.put(oroot, buf, done)
+          self.store.put(r[1], nbuf, done)
         } else {
           console.log(JSON.stringify(rs))
-          throw new Error('recurse!')
+          split(regions, n-1, cb)
         }
       })
-      var nregions = regions.concat([[n,buf]])
+      var nregions = regions.concat([[buf,n]])
       sp.center.forEach(function (c) {
-        split(nregions, c[0], function (err, lrs, rrs) {
+        split(nregions, nregions.length-1, function (err, lrs, rrs) {
           if (err) return done(err)
           if (lrs) sp.left.push(lrs)
           if (rrs) sp.right.push(rrs)
