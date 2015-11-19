@@ -229,52 +229,10 @@ KDB.prototype._insert = function (pt, cb) {
         regions.push([buf,page[0]])
         read()
       } else if (buf[0] === POINT) {
-        handlePoint(buf, page)
+        self._pointOverflow(buf, page[0], regions.length, regions, pt, cb)
       } else cb(new Error('unrecognized page type: ' + buf[0]))
     })
   })()
-
-  function handlePoint (buf, page) {
-    if (self._addPoints(buf, [pt])) {
-      return self.store.put(page[0], buf, cb) // no overflow
-    }
-    if (!regions.length) return cb(new Error('expected parent region page'))
-    var lr = regions[regions.length-1]
-    var sp = self._splitPointPage(buf, page[1])
-    var d = (page[1]-1+len) % len
-
-    if (pt[d] < sp.pivot) sp.left.push(pt)
-    else sp.right.push(pt)
-
-    var lbuf = self._createPointPage()
-    var rbuf = self._createPointPage()
-    self._addPoints(lbuf, sp.left)
-    self._addPoints(rbuf, sp.right)
-
-    var left = page[0], right = self._available()
-    var r = self._removeRegion(lr[0], page[0])
-
-    var exleft = [], exright = []
-    for (var i = 0; i < len; i++) {
-      if (i === d) {
-        exleft.push([r[i][0], sp.pivot])
-        exright.push([sp.pivot, r[i][1]])
-      } else {
-        exleft.push(r[i])
-        exright.push(r[i])
-      }
-    }
-
-    if (self._addRegions(lr[0], [[left,exleft], [right,exright]])) {
-      var done = ndone(3, cb)
-      self.store.put(lr[1], lr[0], done)
-      self.store.put(left, lbuf, done)
-      self.store.put(right, rbuf, done)
-    } else {
-      var dim = (page[0]+1) % len
-      self._split(regions, dim, cb)
-    }
-  }
 }
 
 KDB.prototype._available = function () {
@@ -283,7 +241,51 @@ KDB.prototype._available = function () {
   return i
 }
 
-KDB.prototype._split = function (regions, axis, cb) {
+KDB.prototype._pointOverflow = function (buf, n, depth, regions, pt, cb) {
+  var self = this
+  if (self._addPoints(buf, [pt])) {
+    return self.store.put(n, buf, cb) // no overflow
+  }
+  var len = self.types.length
+
+  if (!regions.length) return cb(new Error('expected parent region page'))
+  var lr = regions[regions.length-1]
+  var sp = self._splitPointPage(buf, (depth+1)%len)
+  var d = (depth-1+len) % len
+
+  if (pt[d] < sp.pivot) sp.left.push(pt)
+  else sp.right.push(pt)
+
+  var lbuf = self._createPointPage()
+  var rbuf = self._createPointPage()
+  self._addPoints(lbuf, sp.left)
+  self._addPoints(rbuf, sp.right)
+
+  var left = n, right = self._available()
+  var r = self._removeRegion(lr[0], n)
+
+  var exleft = [], exright = []
+  for (var i = 0; i < len; i++) {
+    if (i === d) {
+      exleft.push([r[i][0], sp.pivot])
+      exright.push([sp.pivot, r[i][1]])
+    } else {
+      exleft.push(r[i])
+      exright.push(r[i])
+    }
+  }
+
+  if (self._addRegions(lr[0], [[left,exleft], [right,exright]])) {
+    var done = ndone(3, cb)
+    self.store.put(lr[1], lr[0], done)
+    self.store.put(left, lbuf, done)
+    self.store.put(right, rbuf, done)
+  } else {
+    self._regionOverflow(regions, d, cb)
+  }
+}
+
+KDB.prototype._regionOverflow = function (regions, axis, cb) {
   var self = this
   var len = self.types.length
   var pivot = self._median(regions[regions.length-1][0], axis)
