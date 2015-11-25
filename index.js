@@ -5,8 +5,8 @@ module.exports = KDB
 
 function KDB (opts) {
   if (!(this instanceof KDB)) return new KDB(opts)
-  this.a  = 4 // points
-  this.b  = 3 // regions
+  this.a = opts.a || 4 // points
+  this.b = opts.b || 3 // regions
   this.dim = opts.dim
   this.root = {
     type: REGION,
@@ -50,15 +50,15 @@ KDB.prototype.insert = function (pt, value) {
   var self = this
   var q = [], rec = { point: pt, value: value }
   for (var i = 0; i < pt.length; i++) q.push([pt[i],pt[i]])
-  return insert(this.root, [])
+  return insert(this.root, 0)
 
-  function insert (node, parents) {
+  function insert (node, depth) {
     if (node.type === REGION) {
       for (var i = 0; i < node.regions.length; i++) {
         var r = node.regions[i]
         if (overlappingRange(q, r.range)) {
-          var nparents = [{ node: node, index: i }].concat(parents)
-          return insert(r.node, nparents)
+          r.node.parent = { node: node, index: i }
+          return insert(r.node, 0)
         }
       }
       throw new Error('INVALID STATE')
@@ -68,31 +68,43 @@ KDB.prototype.insert = function (pt, value) {
         return
       }
       var coords = []
-      var axis = (parents.length + 1) % pt.length
+      var axis = (depth + 1) % pt.length
       for (var i = 0; i < node.points.length; i++) {
         coords.push(node.points[i].point[axis])
       }
       var pivot = median(coords)
-      if (parents[0].node.regions.length === self.b) {
-        for (var i = 0; i < parents.length
-        && parents[i].node.regions.length === self.b; i++);
-        i -= 1
-        var right = splitRegionNode(parents[i], pivot, axis)
-        parents[i].node.regions.push(right)
-        insert(parents[i].node, parents.slice(i+1))
+      if (!node.parent) {
+        throw new Error('at the root!')
+      } else if (node.parent.node.regions.length >= self.b - 1) {
+        var p = node.parent
+        while (p.node.regions.length >= self.b - 1) {
+          var right = splitRegionNode(p, pivot, axis)
+          if (p.node === self.root) {
+            p.range = regionRange(self.dim, p.node.regions)
+            self.root = {
+              type: REGION,
+              regions: [ p, right ]
+            }
+            return insert(self.root, 0)
+          } else {
+            p.node.regions.push(right)
+            p = p.node.parent
+          }
+        }
+        insert(p.node, depth+1)
       } else {
         var right = splitPointNode(node, pivot, axis)
-        var pnode = parents[0].node
-        var pindex = parents[0].index
-        var lrange = clone(pnode.regions[pindex].range)
-        var rrange = clone(pnode.regions[pindex].range)
+        var pnode = node.parent.node
+        var pix = node.parent.index
+        var lrange = clone(pnode.regions[pix].range)
+        var rrange = clone(pnode.regions[pix].range)
         lrange[axis][1] = pivot
         rrange[axis][0] = pivot
         var lregion = { range: lrange, node: node }
         var rregion = { range: rrange, node: right }
-        parents[0].node.regions[pindex] = lregion
-        parents[0].node.regions.push(rregion)
-        insert(parents[0].node, parents.slice(1))
+        pnode.regions[pix] = lregion
+        pnode.regions.push(rregion)
+        insert(pnode, depth+1)
       }
     }
   }
