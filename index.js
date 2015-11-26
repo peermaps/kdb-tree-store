@@ -1,39 +1,45 @@
 var median = require('median')
+var once = require('once')
 var REGION = 0, POINTS = 1
 
 module.exports = KDB
 
 function KDB (opts) {
+  var self = this
   if (!(this instanceof KDB)) return new KDB(opts)
   this.a = opts.a || 4 // points
   this.b = opts.b || 3 // regions
-  this.dim = opts.dim
-  this.root = {
-    type: REGION,
-    regions: [
-      {
-        range: [],
-        node: {
-          type: POINTS,
-          points: []
+  this.store = opts.store
+  this.size = opts.size
+  this.types = opts.types.map(function (t) {
+    if (t === 'float32') {
+      return function (buf, offset) {
+        return {
+          value: buf.readFloat32(offset),
+          size: 4
         }
       }
-    ]
-  }
-  for (var i = 0; i < this.dim; i++) {
-    this.root.regions[0].range.push([-Infinity,Infinity])
-  }
+    } return t
+  })
+  this.dim = this.types.length
 }
 
-KDB.prototype.query = function (q) {
+KDB.prototype.query = function (q, cb) {
+  var self = this
+  cb = once(cb || noop)
   if (!Array.isArray(q[0])) q = q.map(function (x) { return [x,x] })
-  return (function query (node) {
-    var results = []
+
+  var pending = 1
+  var results = []
+  self._get(0, function f (err, node) {
+    if (err) return cb(err)
     if (node.type === REGION) {
+      var pending = node.regions.length
       for (var i = 0; i < node.regions.length; i++) {
         var r = node.regions[i]
         if (overlappingRange(q, r.range)) {
-          results.push.apply(results, query(r.node))
+          pending++
+          self._get(r.node, f)
         }
       }
     } else if (node.type === POINTS) {
@@ -42,8 +48,55 @@ KDB.prototype.query = function (q) {
         if (overlappingPoint(q, p.point)) results.push(p)
       }
     }
-    return results
-  })(this.root)
+    if (--pending === 0) cb(null, results)
+  })
+}
+
+KDB.prototype._get = function (n, cb) {
+  var self = this
+  self.store.get(n, function (err, buf) {
+    if (err) return cb(err)
+    var node = { type: buf[0] }
+    if (node.type === REGION) {
+      node.regions = []
+      var nregions = buf.readUInt16BE(1)
+      var offset = 3
+      for (var i = 0; i < nregions; i++) {
+        var range = []
+        for (var j = 0; j < self.dim; j++) {
+          var min = self.types[j](buf, offset)
+          offset += min.size
+          var max = self.types[j](buf, offset)
+          offset += max.size
+          range.push([ min.value, max.value ])
+        }
+        node.regions.push({
+          range: range,
+          node: buf.readUInt32BE(offset)
+        })
+        offset += 4
+      }
+      cb(null, node)
+    } else if (node.type === POINTS) {
+      node.points = []
+      var npoints = buf.readUInt16BE(1)
+      var offset = 3
+      for (var i = 0; i < npoints; i++) {
+        var pt = []
+        for (var j = 0; j < self.dim; j++) {
+          var coord = self.types[j](buf, offset)
+          offset += coord.size
+          pt.push(coord.value)
+        }
+        node.points.push({
+          point: pt,
+          value: buf.readUInt32BE(offset)
+        })
+        offset += 4
+      }
+      cb(null, node)
+    }
+  })
 }
 
 KDB.prototype.insert = function (pt, value) {
@@ -211,3 +264,5 @@ function regionRange (dim, regions) {
   }
   return range
 }
+
+function noop () {}

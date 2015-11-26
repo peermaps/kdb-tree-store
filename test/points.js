@@ -13,8 +13,7 @@ test('points', function (t) {
   var kdb = kdbtree({
     types: [ 'float32', 'float32', 'float32' ],
     size: 4096,
-    store: fdstore(4096, file),
-    root: 0
+    store: fdstore(4096, file)
   })
   var data = []
   var pending = n
@@ -23,14 +22,14 @@ test('points', function (t) {
     var y = Math.random() * 200 - 100
     var z = Math.random() * 200 - 100
     var loc = Math.floor(Math.random() * 1000)
-    data.push([x,y,z,loc])
-    kdb.insert([x,y,z,loc], function (err) {
+    data.push({ point: [x,y,z], value: loc })
+    kdb.insert([x,y,z], loc, function (err) {
       t.ifError(err)
       kdb.query([x,y,z], function (err, pts) {
         t.ifError(err)
         t.equal(pts.length, 1)
-        approx(t, pts[0], [x,y,z,loc])
-        t.equal(pts[0][3], loc)
+        approx(t, pts[0].point, [x,y,z])
+        t.equal(pts[0].value, loc)
         if (--pending === 0) check()
       })
     })
@@ -39,7 +38,8 @@ test('points', function (t) {
   function check () {
     kdb.query([[15,50],[-60,10],[50,100]], function (err, pts) {
       t.ifError(err)
-      var expected = data.filter(function (pt) {
+      var expected = data.filter(function (p) {
+        var pt = p.point
         return pt[0] >= 15 && pt[0] <= 50
           && pt[1] >= -60 && pt[1] <= 10
           && pt[2] >= 50 && pt[2] <= 100
