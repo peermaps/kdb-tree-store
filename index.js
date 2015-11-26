@@ -16,12 +16,12 @@ function KDB (opts) {
       return {
         read: function (buf, offset) {
           return {
-            value: buf.readFloat32BE(offset),
+            value: buf.readFloatBE(offset),
             size: 4
           }
         },
         write: function (buf, value, offset) {
-          buf.writeFloat32BE(value, offset)
+          buf.writeFloatBE(value, offset)
           return 4
         }
       }
@@ -124,7 +124,16 @@ KDB.prototype._put = function (n, node, cb) {
       offset += 4
     }
   } else if (node.type === POINTS) {
-    throw new Error('todo: points')
+    var len = node.points.length
+    buf.writeUInt16BE(len, 1)
+    var offset = 3
+    for (var i = 0; i < len; i++) {
+      for (var j = 0; j < self.dim; j++) {
+        offset += self.types[j].write(buf, node.points[i].point[j], offset)
+      }
+      buf.writeUInt32BE(node.points[i].value, offset)
+      offset += 4
+    }
   } else throw new Error('unknown type: ' + node.type)
   self.store.put(n, buf, cb)
 }
@@ -138,8 +147,21 @@ KDB.prototype.insert = function (pt, value, cb) {
   self._get(0, function f (err, node) {
     if (err) cb(err)
     else if (!node) {
-      node = { type: REGION, regions: [] }
-      self._put(0, node, function (err) { f(err, node) })
+      node = {
+        type: REGION,
+        regions: [ { range: [], node: 1 } ]
+      }
+      for (var i = 0; i < self.dim; i++) {
+        node.regions[0].range.push([-Infinity,Infinity])
+      }
+      var pts = { type: POINTS, points: [] }
+      var pending = 2
+      self._put(0, node, function (err) {
+        if (--pending === 0) f(err, node)
+      })
+      self._put(1, pts, function (err) {
+        if (--pending === 0) f(err, node)
+      })
     } else insert(node, 0, 0)
   })
 
