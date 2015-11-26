@@ -24,12 +24,12 @@ test('points', function (t) {
     var loc = Math.floor(Math.random() * 1000)
     data.push({ point: [x,y,z], value: loc })
     kdb.insert([x,y,z], loc, function (err) {
-      t.ifError(err)
+      t.ifError(err, 'insert ifError')
       kdb.query([x,y,z], function (err, pts) {
-        t.ifError(err)
-        t.equal(pts.length, 1)
+        t.ifError(err, 'query ifError')
+        t.equal(pts.length, 1, 'single query result for single point')
         approx(t, pts[0].point, [x,y,z])
-        t.equal(pts[0].value, loc)
+        t.equal(pts[0].value, loc, 'point value')
         if (--pending === 0) check()
       })
     })

@@ -11,14 +11,13 @@ test('one point', function (t) {
   var kdb = kdbtree({
     types: [ 'float32', 'float32', 'float32' ],
     size: 4096,
-    store: fdstore(4096, file),
-    root: 0
+    store: fdstore(4096, file)
   })
-  kdb.insert([1,2,3,9999], function (err) {
+  kdb.insert([1,2,3], 9999, function (err) {
     t.ifError(err)
     kdb.query([1,2,3], function (err, pts) {
       t.ifError(err)
-      t.deepEqual(pts, [[1,2,3,9999]])
+      t.deepEqual(pts, [ { point: [1,2,3], value: 9999 } ])
     })
   })
 })

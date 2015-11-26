@@ -11,6 +11,7 @@ function KDB (opts) {
   this.b = opts.b || 3 // regions
   this.store = opts.store
   this.size = opts.size
+  this._available = 0
   this.types = opts.types.map(function (t) {
     if (t === 'float32') {
       return {
@@ -43,7 +44,6 @@ KDB.prototype.query = function (q, cb) {
     if (err) return cb(err)
     if (!node) node = { type: REGION, regions: [] }
     if (node.type === REGION) {
-      var pending = node.regions.length
       for (var i = 0; i < node.regions.length; i++) {
         var r = node.regions[i]
         if (overlappingRange(q, r.range)) {
@@ -66,7 +66,7 @@ KDB.prototype._get = function (n, cb) {
   self.store.get(n, function (err, buf) {
     if (err) return cb(err)
     if (buf.length === 0) return cb(null, undefined)
-    var node = { type: buf[0] }
+    var node = { type: buf[0], n: n }
     if (node.type === REGION) {
       node.regions = []
       var nregions = buf.readUInt16BE(1)
@@ -119,8 +119,8 @@ KDB.prototype._put = function (n, node, cb) {
     var offset = 3
     for (var i = 0; i < len; i++) {
       for (var j = 0; j < self.dim; j++) {
-        offset += self.types[j].write(buf, node.regions[i].range[0], offset)
-        offset += self.types[j].write(buf, node.regions[i].range[1], offset)
+        offset += self.types[j].write(buf, node.regions[i].range[j][0], offset)
+        offset += self.types[j].write(buf, node.regions[i].range[j][1], offset)
       }
       buf.writeUInt32BE(node.regions[i].node, offset)
       offset += 4
@@ -150,7 +150,7 @@ KDB.prototype.insert = function (pt, value, cb) {
   function done () {
     if (self._insertQueue.length === 0) return
     var q = self._insertQueue.shift()
-    self._insert(q[0], q[1], oninsert(q[1]))
+    self._insert(q[0], q[1], oninsert(q[2]))
   }
   function oninsert (f) {
     return function (err) {
@@ -179,10 +179,10 @@ KDB.prototype._insert = function (pt, value, cb) {
       }
       var pts = { type: POINTS, points: [] }
       var pending = 2
-      self._put(0, node, function (err) {
+      self._put(self._available++, node, function (err) {
         if (--pending === 0) f(err, node)
       })
-      self._put(1, pts, function (err) {
+      self._put(self._available++, pts, function (err) {
         if (--pending === 0) f(err, node)
       })
     } else insert(node, 0, 0)
@@ -194,7 +194,7 @@ KDB.prototype._insert = function (pt, value, cb) {
         var r = node.regions[i]
         if (overlappingRange(q, r.range)) {
           return self._get(r.node, function (err, rnode) {
-            rnode.parent = { node: node, index: i, n: n }
+            rnode.parent = { node: node, index: i }
             insert(rnode, depth+1, r.node)
           })
         }
@@ -241,36 +241,26 @@ throw new Error('split region')
           })
         })(node.parent)
       } else {
-throw new Error('split point')
-        splitPointNode(node, pivot, axis, function (err, right) {
-          if (err) cb(err)
+console.log(node)
+        self._splitPointNode(node, pivot, axis, function (err, right) {
+          if (err) return cb(err)
           var pnode = node.parent.node
           var pix = node.parent.index
           var lrange = clone(pnode.regions[pix].range)
           var rrange = clone(pnode.regions[pix].range)
           lrange[axis][1] = pivot
           rrange[axis][0] = pivot
-          var lregion = { range: lrange, node: node }
-          var rregion = { range: rrange, node: right }
+          var lregion = { range: lrange, node: node.n }
+          var rregion = { range: rrange, node: right.n }
           pnode.regions[pix] = lregion
           pnode.regions.push(rregion)
-          insert(pnode, depth+1, node.parent.n)
+          self._put(pnode.n, pnode, function (err) {
+            if (err) cb(err)
+            else insert(pnode, depth+1, node.parent.n)
+          })
         })
       }
     }
-  }
-
-  function splitPointNode (node, pivot, axis, cb) {
-    var right = { type: POINTS, points: [] }
-    for (var i = 0; i < node.points.length; i++) {
-      var p = node.points[i]
-      if (p.point[axis] >= pivot) {
-        right.points.push(p)
-        node.points.splice(i, 1)
-        i--
-      }
-    }
-    return right
   }
   function splitRegionNode (node, pivot, axis, cb) {
     var rrange = regionRange(self.dim, node.node.regions)
@@ -314,6 +304,27 @@ throw new Error('split point')
       }
     }
     return right
+  }
+}
+
+KDB.prototype._splitPointNode = function (node, pivot, axis, cb) {
+  var self = this
+  var right = { type: POINTS, points: [] }
+  for (var i = 0; i < node.points.length; i++) {
+    var p = node.points[i]
+    if (p.point[axis] >= pivot) {
+      right.points.push(p)
+      node.points.splice(i, 1)
+      i--
+    }
+  }
+  right.n = self._available++
+  var pending = 2
+  self._put(right.n, right, onput)
+  self._put(node.n, node, onput)
+  function onput (err) {
+    if (err) cb(err)
+    else if (--pending === 0) cb(null, right)
   }
 }
 
