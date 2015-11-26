@@ -28,6 +28,8 @@ function KDB (opts) {
     } return t
   })
   this.dim = this.types.length
+  this._insertQueue = []
+  this._pending = 0
 }
 
 KDB.prototype.query = function (q, cb) {
@@ -140,6 +142,27 @@ KDB.prototype._put = function (n, node, cb) {
 
 KDB.prototype.insert = function (pt, value, cb) {
   var self = this
+  if (self._pending++ === 0) {
+    self._insert(pt, value, oninsert(cb))
+  } else {
+    self._insertQueue.push([pt,value,cb])
+  }
+  function done () {
+    if (self._insertQueue.length === 0) return
+    var q = self._insertQueue.shift()
+    self._insert(q[0], q[1], oninsert(q[1]))
+  }
+  function oninsert (f) {
+    return function (err) {
+      f(err)
+      self._pending--
+      done()
+    }
+  }
+}
+
+KDB.prototype._insert = function (pt, value, cb) {
+  var self = this
   cb = once(cb || noop)
   var q = [], rec = { point: pt, value: value }
   for (var i = 0; i < pt.length; i++) q.push([pt[i],pt[i]])
@@ -195,6 +218,7 @@ KDB.prototype.insert = function (pt, value, cb) {
           if (p.node.regions.length < self.b - 1) {
             return insert(p.node, depth+1)
           }
+throw new Error('split region')
           splitRegionNode(p, pivot, axis, function (err, right) {
             if (err) return cb(err)
             if (p.n === 0) {
@@ -217,6 +241,7 @@ KDB.prototype.insert = function (pt, value, cb) {
           })
         })(node.parent)
       } else {
+throw new Error('split point')
         splitPointNode(node, pivot, axis, function (err, right) {
           if (err) cb(err)
           var pnode = node.parent.node
@@ -235,7 +260,7 @@ KDB.prototype.insert = function (pt, value, cb) {
     }
   }
 
-  function splitPointNode (node, pivot, axis) {
+  function splitPointNode (node, pivot, axis, cb) {
     var right = { type: POINTS, points: [] }
     for (var i = 0; i < node.points.length; i++) {
       var p = node.points[i]
