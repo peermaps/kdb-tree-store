@@ -13,10 +13,16 @@ function KDB (opts) {
   this.size = opts.size
   this.types = opts.types.map(function (t) {
     if (t === 'float32') {
-      return function (buf, offset) {
-        return {
-          value: buf.readFloat32(offset),
-          size: 4
+      return {
+        read: function (buf, offset) {
+          return {
+            value: buf.readFloat32BE(offset),
+            size: 4
+          }
+        },
+        write: function (buf, value, offset) {
+          buf.writeFloat32BE(value, offset)
+          return 4
         }
       }
     } return t
@@ -33,6 +39,7 @@ KDB.prototype.query = function (q, cb) {
   var results = []
   self._get(0, function f (err, node) {
     if (err) return cb(err)
+    if (!node) node = { type: REGION, regions: [] }
     if (node.type === REGION) {
       var pending = node.regions.length
       for (var i = 0; i < node.regions.length; i++) {
@@ -56,6 +63,7 @@ KDB.prototype._get = function (n, cb) {
   var self = this
   self.store.get(n, function (err, buf) {
     if (err) return cb(err)
+    if (buf.length === 0) return cb(null, undefined)
     var node = { type: buf[0] }
     if (node.type === REGION) {
       node.regions = []
@@ -64,9 +72,9 @@ KDB.prototype._get = function (n, cb) {
       for (var i = 0; i < nregions; i++) {
         var range = []
         for (var j = 0; j < self.dim; j++) {
-          var min = self.types[j](buf, offset)
+          var min = self.types[j].read(buf, offset)
           offset += min.size
-          var max = self.types[j](buf, offset)
+          var max = self.types[j].read(buf, offset)
           offset += max.size
           range.push([ min.value, max.value ])
         }
@@ -84,7 +92,7 @@ KDB.prototype._get = function (n, cb) {
       for (var i = 0; i < npoints; i++) {
         var pt = []
         for (var j = 0; j < self.dim; j++) {
-          var coord = self.types[j](buf, offset)
+          var coord = self.types[j].read(buf, offset)
           offset += coord.size
           pt.push(coord.value)
         }
@@ -95,8 +103,30 @@ KDB.prototype._get = function (n, cb) {
         offset += 4
       }
       cb(null, node)
-    }
+    } else throw new Error('unknown type: ' + node.type)
   })
+}
+
+KDB.prototype._put = function (n, node, cb) {
+  var self = this
+  var buf = new Buffer(self.size)
+  buf.writeUInt8(node.type, 0)
+  if (node.type === REGION) {
+    var len = node.regions.length
+    buf.writeUInt16BE(len, 1)
+    var offset = 3
+    for (var i = 0; i < len; i++) {
+      for (var j = 0; j < self.dim; j++) {
+        offset += self.types[j].write(buf, node.regions[i].range[0], offset)
+        offset += self.types[j].write(buf, node.regions[i].range[1], offset)
+      }
+      buf.writeUInt32BE(node.regions[i].node, offset)
+      offset += 4
+    }
+  } else if (node.type === POINTS) {
+    throw new Error('todo: points')
+  } else throw new Error('unknown type: ' + node.type)
+  self.store.put(n, buf, cb)
 }
 
 KDB.prototype.insert = function (pt, value, cb) {
@@ -105,9 +135,12 @@ KDB.prototype.insert = function (pt, value, cb) {
   var q = [], rec = { point: pt, value: value }
   for (var i = 0; i < pt.length; i++) q.push([pt[i],pt[i]])
 
-  self._get(0, function (err, node) {
+  self._get(0, function f (err, node) {
     if (err) cb(err)
-    else insert(node, 0, 0)
+    else if (!node) {
+      node = { type: REGION, regions: [] }
+      self._put(0, node, function (err) { f(err, node) })
+    } else insert(node, 0, 0)
   })
 
   function insert (node, depth, n) {
@@ -162,18 +195,20 @@ KDB.prototype.insert = function (pt, value, cb) {
           })
         })(node.parent)
       } else {
-        var right = splitPointNode(node, pivot, axis)
-        var pnode = node.parent.node
-        var pix = node.parent.index
-        var lrange = clone(pnode.regions[pix].range)
-        var rrange = clone(pnode.regions[pix].range)
-        lrange[axis][1] = pivot
-        rrange[axis][0] = pivot
-        var lregion = { range: lrange, node: node }
-        var rregion = { range: rrange, node: right }
-        pnode.regions[pix] = lregion
-        pnode.regions.push(rregion)
-        insert(pnode, depth+1, node.parent.n)
+        splitPointNode(node, pivot, axis, function (err, right) {
+          if (err) cb(err)
+          var pnode = node.parent.node
+          var pix = node.parent.index
+          var lrange = clone(pnode.regions[pix].range)
+          var rrange = clone(pnode.regions[pix].range)
+          lrange[axis][1] = pivot
+          rrange[axis][0] = pivot
+          var lregion = { range: lrange, node: node }
+          var rregion = { range: rrange, node: right }
+          pnode.regions[pix] = lregion
+          pnode.regions.push(rregion)
+          insert(pnode, depth+1, node.parent.n)
+        })
       }
     }
   }
