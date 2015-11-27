@@ -10,12 +10,10 @@ var file = path.join(tmpdir, 'kdb-tree-' + Math.random())
 
 test('overflow', function (t) {
   var n = 200
-  t.plan(n*(2+4+2) + 2)
   var kdb = kdbtree({
     types: [ 'float32', 'float32', 'float32' ],
     size: 256,
-    store: fdstore(256, file),
-    root: 0
+    store: fdstore(256, file)
   })
   var data = []
   var pending = n
@@ -24,18 +22,16 @@ test('overflow', function (t) {
     var y = Math.random() * 200 - 100
     var z = Math.random() * 200 - 100
     var loc = Math.floor(Math.random() * 1000)
-    data.push([x,y,z,loc])
-    kdb.insert([x,y,z,loc], function (err) {
-      t.ifError(err)
+    data.push({ point: [x,y,z], value: loc })
+    kdb.insert([x,y,z], loc, function (err) {
+      t.ifError(err, 'insert ifError')
       kdb.query([x,y,z], function (err, pts) {
-        t.ifError(err)
-        t.equal(pts.length, 1)
-        if (pts.length === 0) {
-          t.fail('empty result')
-        } else {
-          approx(t, pts[0], [x,y,z,loc])
-          t.equal(pts[0][3], loc)
-        }
+        t.ifError(err, 'query ifError')
+        t.equal(pts.length, 1, 'single query result for single point')
+        if (pts[0]) {
+          approx(t, pts[0].point, [x,y,z])
+          t.equal(pts[0].value, loc, 'point value')
+        } else t.fail('no point')
         if (--pending === 0) check()
       })
     })
@@ -44,11 +40,16 @@ test('overflow', function (t) {
   function check () {
     kdb.query([[15,50],[-60,10],[50,100]], function (err, pts) {
       t.ifError(err)
-      t.deepEqual(pts, data.filter(function (pt) {
+      var expected = data.filter(function (p) {
+        var pt = p.point
         return pt[0] >= 15 && pt[0] <= 50
           && pt[1] >= -60 && pt[1] <= 10
           && pt[2] >= 50 && pt[2] <= 100
-      }))
+      })
+      for (var i = 0; i < Math.max(pts.length, expected.length); i++) {
+        approx(t, pts[i], expected[i])
+      }
+      t.end()
     })
   }
 })
