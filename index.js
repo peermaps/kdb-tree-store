@@ -335,18 +335,21 @@ KDB.prototype._splitRegionNode = function (node, pivot, axis, cb) {
       self._get(r.node, function (err, rnode) {
         if (err) return cb(err)
         if (rnode.type === POINTS) {
-          self._splitPointNode(rnode, pivot, axis, function (err, rrnode) {
+          self._splitPointNode(rnode, pivot, axis, function (err, rn) {
             if (err) return cb(err)
-            rright.node = rrnode
+            rright.node = rn
             loop(i+1)
           })
         } else if (rnode.type === REGION) {
-throw new Error('recursive split region!')
-          rright.node = {
-            type: REGION,
-            regions: [ splitRegionNode(r, pivot, axis) ]
-          }
-          loop(i+1)
+          r.node = rnode
+          self._splitRegionNode(r, pivot, axis, function (err, spr) {
+            if (err) return cb(err)
+            rright.node = { type: REGION, regions: [ spr ] }
+            self._put(rnode.n, rnode, function (err) {
+              if (err) cb(err)
+              else loop(i+1)
+            })
+          })
         } else return cb(new Error('unknown type: ' + rnode.type))
       })
     }
