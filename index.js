@@ -1,5 +1,8 @@
 var median = require('median')
 var once = require('once')
+var almostEqual = require('almost-equal')
+var FLT = almostEqual.FLT_EPSILON
+
 var REGION = 0, POINTS = 1
 
 module.exports = KDB
@@ -24,6 +27,12 @@ function KDB (opts) {
         write: function (buf, value, offset) {
           buf.writeFloatBE(value, offset)
           return 4
+        },
+        cmp: {
+          lt: function (a, b) { return a < b && !almostEqual(a, b, FLT, FLT) },
+          lte: function (a, b) { return a <= b || almostEqual(a, b, FLT, FLT) },
+          gt: function (a, b) { return a > b && !almostEqual(a, b, FLT, FLT) },
+          gte: function (a, b) { return a >= b || almostEqual(a, b, FLT, FLT) }
         }
       }
     } return t
@@ -46,7 +55,7 @@ KDB.prototype.query = function (q, cb) {
     if (node.type === REGION) {
       for (var i = 0; i < node.regions.length; i++) {
         var r = node.regions[i]
-        if (overlappingRange(q, r.range)) {
+        if (self._overlappingRange(q, r.range)) {
           pending++
           self._get(r.node, f)
         }
@@ -54,7 +63,7 @@ KDB.prototype.query = function (q, cb) {
     } else if (node.type === POINTS) {
       for (var i = 0; i < node.points.length; i++) {
         var p = node.points[i]
-        if (overlappingPoint(q, p.point)) results.push(p)
+        if (self._overlappingPoint(q, p.point)) results.push(p)
       }
     }
     if (--pending === 0) cb(null, results)
@@ -192,7 +201,7 @@ KDB.prototype._insert = function (pt, value, cb) {
     if (node.type === REGION) {
       for (var i = 0; i < node.regions.length; i++) {
         var r = node.regions[i]
-        if (overlappingRange(q, r.range)) {
+        if (self._overlappingRange(q, r.range)) {
           return self._get(r.node, function (err, rnode) {
             rnode.parent = { node: node, index: i }
             insert(rnode, depth+1, r.node)
@@ -328,30 +337,32 @@ KDB.prototype._splitPointNode = function (node, pivot, axis, cb) {
   }
 }
 
-function overlappingPoint (a, p) {
+KDB.prototype._overlappingPoint = function (a, p) {
   for (var i = 0; i < a.length; i++) {
-    if (!overlappingmm(a[i][0], a[i][1], p[i], p[i])) return false
+    var cmp = this.types[i].cmp
+    if (!overlappingmm(cmp, a[i][0], a[i][1], p[i], p[i])) return false
   }
   return true
 }
 
-function overlappingmm (amin, amax, bmin, bmax) {
-  return (amin >= bmin && amin <= bmax)
-    || (amax >= bmin && amax <= bmax)
-    || (amin < bmin && amax > bmax)
+function overlappingmm (cmp, amin, amax, bmin, bmax) {
+  return (cmp.gte(amin, bmin) && cmp.lte(amin, bmax))
+    || (cmp.gte(amax, bmin) && cmp.lte(amax <= bmax))
+    || (cmp.lt(amin, bmin) && cmp.gt(amax, bmax))
 }
 
-function overlappingRange (a, b) {
+KDB.prototype._overlappingRange = function (a, b) {
   for (var i = 0; i < a.length; i++) {
-    if (!overlapping(a[i], b[i])) return false
+    var cmp = this.types[i].cmp
+    if (!overlapping(cmp, a[i], b[i])) return false
   }
   return true
 }
 
-function overlapping (a, b) {
-  return (a[0] >= b[0] && a[0] <= b[1])
-    || (a[1] >= b[0] && a[1] <= b[1])
-    || (a[0] < b[0] && a[1] > b[1])
+function overlapping (cmp, a, b) {
+  return (cmp.gte(a[0], b[0]) && cmp.lte(a[0], b[1]))
+    || (cmp.gte(a[1], b[0]) && cmp.lte(a[1], b[1]))
+    || (cmp.lt(a[0], b[0]) && cmp.gt(a[1], b[1]))
 }
 
 function clone (xs) {
