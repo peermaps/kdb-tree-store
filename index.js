@@ -247,7 +247,7 @@ KDB.prototype._insert = function (pt, value, cb) {
               }
             } else {
               p.node.regions.push(right)
-              self._put(p.n, p.node, function (err) {
+              self._put(p.node.n, p.node, function (err) {
                 if (err) cb(err)
                 else loop(p.node.parent)
               })
@@ -345,10 +345,14 @@ KDB.prototype._splitRegionNode = function (node, pivot, axis, cb) {
           self._splitRegionNode(r, pivot, axis, function (err, spr) {
             if (err) return cb(err)
             rright.node = { type: REGION, regions: [ spr ] }
-            self._put(rnode.n, rnode, function (err) {
+            rright.node.n = self._available++
+            var pending = 2
+            self._put(rright.node.n, rright.node, done)
+            self._put(rnode.n, rnode, done)
+            function done (err) {
               if (err) cb(err)
-              else loop(i+1)
-            })
+              else if (--pending === 0) loop(i+1)
+            }
           })
         } else return cb(new Error('unknown type: ' + rnode.type))
       })
