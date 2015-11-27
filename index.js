@@ -131,7 +131,8 @@ KDB.prototype._put = function (n, node, cb) {
         offset += self.types[j].write(buf, node.regions[i].range[j][0], offset)
         offset += self.types[j].write(buf, node.regions[i].range[j][1], offset)
       }
-      buf.writeUInt32BE(node.regions[i].node, offset)
+      var rn = node.regions[i].node
+      buf.writeUInt32BE(typeof rn === 'number' ? rn : rn.n, offset)
       offset += 4
     }
   } else if (node.type === POINTS) {
@@ -194,17 +195,17 @@ KDB.prototype._insert = function (pt, value, cb) {
       self._put(self._available++, pts, function (err) {
         if (--pending === 0) f(err, node)
       })
-    } else insert(node, 0, 0)
+    } else insert(node, 0)
   })
 
-  function insert (node, depth, n) {
+  function insert (node, depth) {
     if (node.type === REGION) {
       for (var i = 0; i < node.regions.length; i++) {
         var r = node.regions[i]
         if (self._overlappingRange(q, r.range)) {
           return self._get(r.node, function (err, rnode) {
             rnode.parent = { node: node, index: i }
-            insert(rnode, depth+1, r.node)
+            insert(rnode, depth+1)
           })
         }
       }
@@ -212,7 +213,7 @@ KDB.prototype._insert = function (pt, value, cb) {
     } else if (node.type === POINTS) {
       if (node.points.length < self.a) {
         node.points.push({ point: pt, value: value })
-        return self._put(n, node, cb)
+        return self._put(node.n, node, cb)
       }
       var coords = []
       var axis = (depth + 1) % pt.length
@@ -227,22 +228,26 @@ KDB.prototype._insert = function (pt, value, cb) {
           if (p.node.regions.length < self.b - 1) {
             return insert(p.node, depth+1)
           }
-throw new Error('split region')
-          splitRegionNode(p, pivot, axis, function (err, right) {
+          self._splitRegionNode(p, pivot, axis, function (err, right) {
             if (err) return cb(err)
-            if (p.n === 0) {
+            if (p.node.n === 0) {
               p.range = regionRange(self.dim, p.node.regions)
               var root = {
                 type: REGION,
                 regions: [ p, right ]
               }
-              self._put(0, root, function (err) {
+              var pending = 2
+              var n = p.node.n
+              p.node.n = self._available++
+              self._put(p.node.n, p.node, done)
+              self._put(n, root, done)
+              function done (err) {
                 if (err) cb(err)
-                else insert(root, 0, 0)
-              })
+                else if (--pending === 0) insert(root, 0)
+              }
             } else {
               p.node.regions.push(right)
-              self._put(p.n, p, function (err) {
+              self._put(p.n, p.node, function (err) {
                 if (err) cb(err)
                 else loop(p.node.parent)
               })
@@ -250,7 +255,6 @@ throw new Error('split region')
           })
         })(node.parent)
       } else {
-console.log(node)
         self._splitPointNode(node, pivot, axis, function (err, right) {
           if (err) return cb(err)
           var pnode = node.parent.node
@@ -265,54 +269,11 @@ console.log(node)
           pnode.regions.push(rregion)
           self._put(pnode.n, pnode, function (err) {
             if (err) cb(err)
-            else insert(pnode, depth+1, node.parent.n)
+            else insert(pnode, depth+1)
           })
         })
       }
     }
-  }
-  function splitRegionNode (node, pivot, axis, cb) {
-    var rrange = regionRange(self.dim, node.node.regions)
-    rrange[axis][0] = pivot
-
-    var right = {
-      range: rrange,
-      node: {
-        type: REGION,
-        regions: []
-      }
-    }
-    var left = node
-
-    for (var i = 0; i < node.node.regions.length; i++) {
-      var r = node.node.regions[i]
-      if (r.range[axis][1] <= pivot) {
-        // already in the right place
-      } else if (r.range[axis][0] >= pivot) {
-        right.node.regions.push(r)
-        left.node.regions.splice(i, 1)
-        i--
-      } else {
-        var rright = {
-          range: clone(r.range)
-        }
-        rright.range[axis][0] = pivot
-        right.node.regions.push(rright)
-
-        var rleft = r
-        rleft.range[axis][1] = pivot
-
-        if (r.node.type === POINTS) {
-          rright.node = splitPointNode(r.node, pivot, axis)
-        } else if (r.node.type === REGION) {
-          rright.node = {
-            type: REGION,
-            regions: [ splitRegionNode(r, pivot, axis) ]
-          }
-        } else throw new Error('unknown type: ' + r.node.type)
-      }
-    }
-    return right
   }
 }
 
@@ -334,6 +295,72 @@ KDB.prototype._splitPointNode = function (node, pivot, axis, cb) {
   function onput (err) {
     if (err) cb(err)
     else if (--pending === 0) cb(null, right)
+  }
+}
+
+KDB.prototype._splitRegionNode = function (node, pivot, axis, cb) {
+  var self = this
+  var rrange = regionRange(self.dim, node.node.regions)
+  rrange[axis][0] = pivot
+
+  var right = {
+    range: rrange,
+    node: {
+      type: REGION,
+      regions: []
+    }
+  }
+  var left = node
+
+  ;(function loop (i) {
+    if (i >= node.node.regions.length) return done()
+
+    var r = node.node.regions[i]
+    if (r.range[axis][1] <= pivot) {
+      // already in the right place
+      loop(i+1)
+    } else if (r.range[axis][0] >= pivot) {
+      right.node.regions.push(r)
+      left.node.regions.splice(i, 1)
+      loop(i)
+    } else {
+      var rright = {
+        range: clone(r.range)
+      }
+      rright.range[axis][0] = pivot
+      right.node.regions.push(rright)
+
+      var rleft = r
+      rleft.range[axis][1] = pivot
+      self._get(r.node, function (err, rnode) {
+        if (err) return cb(err)
+        if (rnode.type === POINTS) {
+          self._splitPointNode(rnode, pivot, axis, function (err, rrnode) {
+            if (err) return cb(err)
+            rright.node = rrnode
+            loop(i+1)
+          })
+        } else if (rnode.type === REGION) {
+throw new Error('recursive split region!')
+          rright.node = {
+            type: REGION,
+            regions: [ splitRegionNode(r, pivot, axis) ]
+          }
+          loop(i+1)
+        } else return cb(new Error('unknown type: ' + rnode.type))
+      })
+    }
+  })(0)
+
+  function done () {
+    var pending = 2
+    right.node.n = self._available++
+    self._put(right.node.n, right.node, f)
+    self._put(left.node.n, left.node, f)
+    function f (err) {
+      if (err) cb(err)
+      else if (--pending === 0) cb(null, right)
+    }
   }
 }
 
