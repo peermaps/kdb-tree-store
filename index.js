@@ -114,7 +114,7 @@ KDB.prototype._get = function (n, cb) {
         offset += 4
       }
       cb(null, node)
-    } else throw new Error('unknown type: ' + node.type)
+    } else cb(new Error('unknown type: ' + node.type))
   })
 }
 
@@ -146,7 +146,7 @@ KDB.prototype._put = function (n, node, cb) {
       buf.writeUInt32BE(node.points[i].value, offset)
       offset += 4
     }
-  } else throw new Error('unknown type: ' + node.type)
+  } else cb(new Error('unknown type: ' + node.type))
   self.store.put(n, buf, cb)
 }
 
@@ -203,13 +203,19 @@ KDB.prototype._insert = function (pt, value, cb) {
       for (var i = 0; i < node.regions.length; i++) {
         var r = node.regions[i]
         if (self._overlappingRange(q, r.range)) {
-          return self._get(r.node, function (err, rnode) {
-            rnode.parent = { node: node, index: i }
-            insert(rnode, depth+1)
-          })
+          if (typeof r.node === 'number') {
+            self._get(r.node, function (err, rnode) {
+              rnode.parent = { node: node, index: i }
+              insert(rnode, depth+1)
+            })
+          } else {
+            r.node.parent = { node: node, index: i }
+            insert(r.node, depth+1)
+          }
+          return
         }
       }
-      throw new Error('INVALID STATE')
+      cb(new Error('INVALID STATE'))
     } else if (node.type === POINTS) {
       if (node.points.length < self.a) {
         node.points.push({ point: pt, value: value })
@@ -222,7 +228,7 @@ KDB.prototype._insert = function (pt, value, cb) {
       }
       var pivot = median(coords)
       if (!node.parent) {
-        throw new Error('at the root!')
+        cb(new Error('unexpectedly at the root node'))
       } else if (node.parent.node.regions.length >= self.b - 1) {
         ;(function loop (p) {
           if (p.node.regions.length < self.b - 1) {
@@ -239,6 +245,8 @@ KDB.prototype._insert = function (pt, value, cb) {
               var pending = 2
               var n = p.node.n
               p.node.n = self._available++
+              p.node.parent = root
+              right.node.parent = root
               self._put(p.node.n, p.node, done)
               self._put(n, root, done)
               function done (err) {

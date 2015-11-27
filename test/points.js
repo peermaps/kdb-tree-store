@@ -28,8 +28,10 @@ test('points', function (t) {
       kdb.query([x,y,z], function (err, pts) {
         t.ifError(err, 'query ifError')
         t.equal(pts.length, 1, 'single query result for single point')
-        approx(t, pts[0].point, [x,y,z])
-        t.equal(pts[0].value, loc, 'point value')
+        if (pts[0]) {
+          approx(t, pts[0].point, [x,y,z])
+          t.equal(pts[0].value, loc, 'point value')
+        } else t.fail('no point')
         if (--pending === 0) check()
       })
     })
