@@ -1,5 +1,5 @@
 {
-  "name": "kdb-tree",
+  "name": "kdb-tree-store",
   "version": "1.0.0",
   "description": "kdb tree implementation using a chunk store",
   "main": "index.js",
@@ -8,7 +8,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git://github.com/peermaps/kdb-tree.git"
+    "url": "git://github.com/peermaps/kdb-tree-store.git"
   },
   "keywords": [
     "kdb",
@@ -22,20 +22,18 @@
   "author": "substack",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/peermaps/kdb-tree/issues"
+    "url": "https://github.com/peermaps/kdb-tree-store/issues"
   },
-  "homepage": "https://github.com/peermaps/kdb-tree#readme",
+  "homepage": "https://github.com/peermaps/kdb-tree-store#readme",
   "devDependencies": {
     "fd-chunk-store": "^1.1.0",
     "tape": "^4.2.2"
   },
   "dependencies": {
     "almost-equal": "^1.0.0",
-    "collect-stream": "^1.1.1",
-    "euclidean-distance": "^0.1.0",
-    "inherits": "^2.0.1",
     "median": "0.0.2",
     "once": "^1.3.3",
-    "readable-stream": "^2.0.4"
+    "readable-stream": "^2.0.4",
+    "xtend": "^4.0.1"
   }
 }
