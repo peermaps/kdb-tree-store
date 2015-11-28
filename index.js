@@ -19,15 +19,12 @@ function KDB (opts) {
     if (t === 'float32') {
       return {
         read: function (buf, offset) {
-          return {
-            value: buf.readFloatBE(offset),
-            size: 4
-          }
+          return buf.readFloatBE(offset)
         },
         write: function (buf, value, offset) {
-          buf.writeFloatBE(value, offset)
-          return 4
+          return buf.writeFloatBE(value, offset)
         },
+        size: 4,
         cmp: {
           lt: function (a, b) { return a < b && !almostEqual(a, b, FLT, FLT) },
           lte: function (a, b) { return a <= b || almostEqual(a, b, FLT, FLT) },
@@ -40,6 +37,11 @@ function KDB (opts) {
   this.dim = this.types.length
   this._insertQueue = []
   this._pending = 0
+
+  this._rsize = 4
+  for (var i = 0; i < this.dim; i++) this._rsize += this.types[i].size * 2
+  this._psize = 4
+  for (var i = 0; i < this.dim; i++) this._psize += this.types[i].size
 }
 
 KDB.prototype.query = function (q, cb) {
@@ -83,11 +85,12 @@ KDB.prototype._get = function (n, cb) {
       for (var i = 0; i < nregions; i++) {
         var range = []
         for (var j = 0; j < self.dim; j++) {
-          var min = self.types[j].read(buf, offset)
-          offset += min.size
-          var max = self.types[j].read(buf, offset)
-          offset += max.size
-          range.push([ min.value, max.value ])
+          var t = self.types[j]
+          var min = t.read(buf, offset)
+          offset += t.size
+          var max = t.read(buf, offset)
+          offset += t.size
+          range.push([ min, max ])
         }
         node.regions.push({
           range: range,
@@ -103,9 +106,10 @@ KDB.prototype._get = function (n, cb) {
       for (var i = 0; i < npoints; i++) {
         var pt = []
         for (var j = 0; j < self.dim; j++) {
-          var coord = self.types[j].read(buf, offset)
-          offset += coord.size
-          pt.push(coord.value)
+          var t = self.types[j]
+          var coord = t.read(buf, offset)
+          offset += t.size
+          pt.push(coord)
         }
         node.points.push({
           point: pt,
@@ -128,8 +132,11 @@ KDB.prototype._put = function (n, node, cb) {
     var offset = 3
     for (var i = 0; i < len; i++) {
       for (var j = 0; j < self.dim; j++) {
-        offset += self.types[j].write(buf, node.regions[i].range[j][0], offset)
-        offset += self.types[j].write(buf, node.regions[i].range[j][1], offset)
+        var t = self.types[j]
+        t.write(buf, node.regions[i].range[j][0], offset)
+        offset += t.size
+        t.write(buf, node.regions[i].range[j][1], offset)
+        offset += t.size
       }
       var rn = node.regions[i].node
       buf.writeUInt32BE(typeof rn === 'number' ? rn : rn.n, offset)
@@ -141,7 +148,9 @@ KDB.prototype._put = function (n, node, cb) {
     var offset = 3
     for (var i = 0; i < len; i++) {
       for (var j = 0; j < self.dim; j++) {
-        offset += self.types[j].write(buf, node.points[i].point[j], offset)
+        var t = self.types[j]
+        t.write(buf, node.points[i].point[j], offset)
+        offset += t.size
       }
       buf.writeUInt32BE(node.points[i].value, offset)
       offset += 4
@@ -217,21 +226,22 @@ KDB.prototype._insert = function (pt, value, cb) {
       }
       cb(new Error('INVALID STATE'))
     } else if (node.type === POINTS) {
-      if (node.points.length < self.a) {
+      if (3 + (node.points.length + 1) * self._psize < self.size) {
         node.points.push({ point: pt, value: value })
         return self._put(node.n, node, cb)
       }
+
       var coords = []
       var axis = (depth + 1) % pt.length
       for (var i = 0; i < node.points.length; i++) {
         coords.push(node.points[i].point[axis])
       }
       var pivot = median(coords)
-      if (!node.parent) {
-        cb(new Error('unexpectedly at the root node'))
-      } else if (node.parent.node.regions.length >= self.b - 1) {
+      if (!node.parent) return cb(new Error('unexpectedly at the root node'))
+
+      if (self._overflowRegion(node.parent.node)) {
         ;(function loop (p) {
-          if (p.node.regions.length < self.b - 1) {
+          if (!self._overflowRegion(p.node)) {
             return insert(p.node, depth+1)
           }
           self._splitRegionNode(p, pivot, axis, function (err, right) {
@@ -253,6 +263,8 @@ KDB.prototype._insert = function (pt, value, cb) {
                 if (err) cb(err)
                 else if (--pending === 0) insert(root, 0)
               }
+            } else if (self._overflowRegion(p.node)) {
+              cb(new Error('unexpected overflow!'))
             } else {
               p.node.regions.push(right)
               self._put(p.node.n, p.node, function (err) {
@@ -425,6 +437,10 @@ function regionRange (dim, regions) {
     }
   }
   return range
+}
+
+KDB.prototype._overflowRegion = function (node) {
+  return 3 + (node.regions.length + 1) * this._rsize > this.size
 }
 
 function noop () {}
