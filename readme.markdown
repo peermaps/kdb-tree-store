@@ -56,6 +56,8 @@ Create a new kdb tree instance `kdb` given `opts`:
 * `opts.types` - array of data types for each dimension
 * `opts.store` - [chunk store](https://npmjs.com/package/abstract-chunk-store) instance
 * `opts.size` - size of the chunks in the chunk store
+* `opts.available` - next free chunk index to use, set if loading a previously
+saved file with data from `'available'` events
 
 ## kdb.query(q, opts={}, cb)
 
@@ -72,6 +74,13 @@ Return a readable `stream` of query results from the query `q`.
 ## kdb.insert(pt, value, cb)
 
 Insert `value` (a 32-bit integer) at a point `pt`.
+
+## kdb.on('available', function (n) {})
+
+Index `n` of the next available chunk to use.
+
+Save `n` and pass as `opts.available` to future kdb instances that load from the
+same file.
 
 ### data types
 

@@ -2,20 +2,22 @@ var median = require('median')
 var once = require('once')
 var Readable = require('readable-stream').Readable
 var xtend = require('xtend')
+var inherits = require('inherits')
+var EventEmitter = require('events').EventEmitter
 
 var REGION = 0, POINTS = 1
 var builtinTypes = require('./types.js')
 
 module.exports = KDB
+inherits(KDB, EventEmitter)
 
 function KDB (opts) {
   var self = this
   if (!(this instanceof KDB)) return new KDB(opts)
-  this.a = opts.a || 4 // points
-  this.b = opts.b || 3 // regions
+  EventEmitter.call(this)
   this.store = opts.store
   this.size = opts.size
-  this._available = 0
+  this._available = opts.available
   this.types = opts.types.map(function (t) {
     var bt = builtinTypes(t)
     if (bt) return bt
@@ -214,10 +216,10 @@ KDB.prototype._insert = function (pt, value, cb) {
       }
       var pts = { type: POINTS, points: [] }
       var pending = 2
-      self._put(self._available++, node, function (err) {
+      self._put(self._alloc(), node, function (err) {
         if (--pending === 0) f(err, node)
       })
-      self._put(self._available++, pts, function (err) {
+      self._put(self._alloc(), pts, function (err) {
         if (--pending === 0) f(err, node)
       })
     } else insert(node, 0)
@@ -270,7 +272,7 @@ KDB.prototype._insert = function (pt, value, cb) {
               }
               var pending = 2
               var n = p.node.n
-              p.node.n = self._available++
+              p.node.n = self._alloc()
               p.node.parent = root
               right.node.parent = root
               self._put(p.node.n, p.node, done)
@@ -322,7 +324,7 @@ KDB.prototype._splitPointNode = function (node, pivot, axis, cb) {
       i--
     }
   }
-  right.n = self._available++
+  right.n = self._alloc()
   var pending = 2
   self._put(right.n, right, onput)
   self._put(node.n, node, onput)
@@ -379,7 +381,7 @@ KDB.prototype._splitRegionNode = function (node, pivot, axis, cb) {
           self._splitRegionNode(r, pivot, axis, function (err, spr) {
             if (err) return cb(err)
             rright.node = { type: REGION, regions: [ spr ] }
-            rright.node.n = self._available++
+            rright.node.n = self._alloc()
             var pending = 2
             self._put(rright.node.n, rright.node, done)
             self._put(rnode.n, rnode, done)
@@ -394,7 +396,7 @@ KDB.prototype._splitRegionNode = function (node, pivot, axis, cb) {
   })(0)
 
   function done () {
-    right.node.n = self._available++
+    right.node.n = self._alloc()
     self._put(right.node.n, right.node, function (err) {
       if (err) cb(err)
       else cb(null, right)
@@ -454,6 +456,12 @@ KDB.prototype._regionRange = function (regions) {
 
 KDB.prototype._willOverflow = function (node, spots) {
   return 3 + (node.regions.length + spots) * this._rsize > this.size
+}
+
+KDB.prototype._alloc = function () {
+  var n = this._available++
+  this.emit('available', this._available)
+  return n
 }
 
 function noop () {}
