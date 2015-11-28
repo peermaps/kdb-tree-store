@@ -12,6 +12,8 @@ module.exports = function (t) {
         return buf.writeFloatBE(value, offset)
       },
       size: 4,
+      min: -Infinity,
+      max: Infinity,
       cmp: {
         lt: function (a, b) { return a < b && !almostEqual(a, b, FLT, FLT) },
         lte: function (a, b) { return a <= b || almostEqual(a, b, FLT, FLT) },
@@ -28,6 +30,8 @@ module.exports = function (t) {
         return buf.writeDoubleBE(value, offset)
       },
       size: 8,
+      min: -Infinity,
+      max: Infinity,
       cmp: {
         lt: function (a, b) { return a < b && !almostEqual(a, b, DBL, DBL) },
         lte: function (a, b) { return a <= b || almostEqual(a, b, DBL, DBL) },
@@ -44,6 +48,8 @@ module.exports = function (t) {
         return buf.writeUInt8BE(value, offset)
       },
       size: 1,
+      min: 0,
+      max: 255,
       cmp: icmp
     }
   } else if (/^u(|i|int)?16$/.test(t)) {
@@ -55,6 +61,8 @@ module.exports = function (t) {
         return buf.writeUInt16BE(value, offset)
       },
       size: 2,
+      min: 0,
+      max: 65535,
       cmp: icmp
     }
   } else if (/^u(|i|int)?32$/.test(t)) {
@@ -66,6 +74,8 @@ module.exports = function (t) {
         return buf.writeUInt32BE(value, offset)
       },
       size: 4,
+      min: 0,
+      max: 4294967295,
       cmp: icmp
     }
   } else if (/^s?(|i|int)?8$/.test(t)) {
@@ -77,6 +87,8 @@ module.exports = function (t) {
         return buf.writeInt8BE(value, offset)
       },
       size: 1,
+      min: -128,
+      max: 127,
       cmp: icmp
     }
   } else if (/^s?(|i|int)?16$/.test(t)) {
@@ -88,6 +100,8 @@ module.exports = function (t) {
         return buf.writeInt16BE(value, offset)
       },
       size: 2,
+      min: -32768,
+      max: 32767,
       cmp: icmp
     }
   } else if (/^s?(|i|int)?32/.test(t)) {
@@ -99,6 +113,8 @@ module.exports = function (t) {
         return buf.writeInt32BE(value, offset)
       },
       size: 4,
+      min: -2147483648,
+      max: 2147483647,
       cmp: icmp
     }
   }

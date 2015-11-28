@@ -193,7 +193,8 @@ KDB.prototype._insert = function (pt, value, cb) {
         regions: [ { range: [], node: 1 } ]
       }
       for (var i = 0; i < self.dim; i++) {
-        node.regions[0].range.push([-Infinity,Infinity])
+        var t = self.types[i]
+        node.regions[0].range.push([t.min,t.max])
       }
       var pts = { type: POINTS, points: [] }
       var pending = 2
@@ -246,7 +247,7 @@ KDB.prototype._insert = function (pt, value, cb) {
           self._splitRegionNode(p, pivot, axis, function (err, right) {
             if (err) return cb(err)
             if (p.node.n === 0 || self._willOverflow(p.node, 1)) {
-              p.range = regionRange(self.dim, p.node.regions)
+              p.range = self._regionRange(p.node.regions)
               var root = {
                 type: REGION,
                 regions: [ p, right ]
@@ -317,7 +318,7 @@ KDB.prototype._splitPointNode = function (node, pivot, axis, cb) {
 
 KDB.prototype._splitRegionNode = function (node, pivot, axis, cb) {
   var self = this
-  var rrange = regionRange(self.dim, node.node.regions)
+  var rrange = self._regionRange(node.node.regions)
   rrange[axis][0] = pivot
 
   var right = {
@@ -417,11 +418,13 @@ function clone (xs) {
   return xs.map(function (x) { return x.slice() })
 }
 
-function regionRange (dim, regions) {
+KDB.prototype._regionRange = function (regions) {
+  var self = this
   var range = []
-  for (var j = 0; j < dim; j++) {
+  for (var j = 0; j < self.dim; j++) {
+    var t = self.types[j]
     var r0 = regions.length === 0
-      ? [-Infinity,Infinity]
+      ? [t.min,t.max]
       : regions[0].range[j]
     range[j] = [r0[0],r0[1]]
     for (var i = 1; i < regions.length; i++) {
