@@ -1,9 +1,8 @@
 var median = require('median')
 var once = require('once')
-var almostEqual = require('almost-equal')
-var FLT = almostEqual.FLT_EPSILON
 
 var REGION = 0, POINTS = 1
+var builtinTypes = require('./types.js')
 
 module.exports = KDB
 
@@ -16,23 +15,10 @@ function KDB (opts) {
   this.size = opts.size
   this._available = 0
   this.types = opts.types.map(function (t) {
-    if (t === 'float32') {
-      return {
-        read: function (buf, offset) {
-          return buf.readFloatBE(offset)
-        },
-        write: function (buf, value, offset) {
-          return buf.writeFloatBE(value, offset)
-        },
-        size: 4,
-        cmp: {
-          lt: function (a, b) { return a < b && !almostEqual(a, b, FLT, FLT) },
-          lte: function (a, b) { return a <= b || almostEqual(a, b, FLT, FLT) },
-          gt: function (a, b) { return a > b && !almostEqual(a, b, FLT, FLT) },
-          gte: function (a, b) { return a >= b || almostEqual(a, b, FLT, FLT) }
-        }
-      }
-    } return t
+    var bt = builtinTypes(t)
+    if (bt) return bt
+    if (typeof t === 'string') throw new Error('unrecognized type: ' + t)
+    return t
   })
   this.dim = this.types.length
   this._insertQueue = []
@@ -44,8 +30,13 @@ function KDB (opts) {
   for (var i = 0; i < this.dim; i++) this._psize += this.types[i].size
 }
 
-KDB.prototype.query = function (q, cb) {
+KDB.prototype.query = function (q, opts, cb) {
   var self = this
+  if (typeof opts === 'function') {
+    cb = opts
+    opts = {}
+  }
+  if (!opts) opts = {}
   cb = once(cb || noop)
   if (!Array.isArray(q[0])) q = q.map(function (x) { return [x,x] })
 
@@ -69,8 +60,9 @@ KDB.prototype.query = function (q, cb) {
         for (var i = 0; i < node.points.length; i++) {
           var p = node.points[i]
           if (self._overlappingPoint(q, p.point)) {
-            //console.log('DEPTH', depth)
-            results.push(p)
+            if (opts.depth) {
+              results.push({ depth: depth, point: p })
+            } else results.push(p)
           }
         }
       }
