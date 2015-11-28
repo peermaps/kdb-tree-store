@@ -23,7 +23,6 @@ for (var i = 0; i < n; i++) (function () {
 })()
 
 function check () {
-  kdb.query([[-100,0],[0,5],[-50,-40]], function (err, pts) {
-    console.log(pts)
-  })
+  kdb.query([[-100,0],[0,50],[-50,-40]])
+    .on('data', console.log)
 }
