@@ -89,6 +89,10 @@ KDB.prototype.queryStream = function (q, opts) {
   return stream
 }
 
+KDB.prototype.nearest = function (pt, cb) {
+  var path = []
+}
+
 KDB.prototype._get = function (n, cb) {
   var self = this
   self.store.get(n, function (err, buf) {
