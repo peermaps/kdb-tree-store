@@ -1,8 +1,6 @@
 var kdbtree = require('../')
 var fdstore = require('fd-chunk-store')
 var tmpdir = require('os').tmpdir()
-var almostEqual = require('almost-equal')
-var FLT = almostEqual.FLT_EPSILON
 
 var path = require('path')
 var file = path.join(tmpdir, 'kdb-tree-' + Math.random())
