@@ -3,7 +3,7 @@ var FLT = almostEqual.FLT_EPSILON
 var DBL = almostEqual.DBL_EPSILON
 
 module.exports = function (t) {
-  if (/^(f|f32|float32)$/.test(t)) {
+  if (/^(f|f32|float32|float)$/.test(t)) {
     return {
       read: function (buf, offset) {
         return buf.readFloatBE(offset)
