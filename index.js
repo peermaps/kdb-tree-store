@@ -51,25 +51,32 @@ KDB.prototype.query = function (q, cb) {
 
   var pending = 1
   var results = []
-  self._get(0, function f (err, node) {
-    if (err) return cb(err)
-    if (!node) node = { type: REGION, regions: [] }
-    if (node.type === REGION) {
-      for (var i = 0; i < node.regions.length; i++) {
-        var r = node.regions[i]
-        if (self._overlappingRange(q, r.range)) {
-          pending++
-          self._get(r.node, f)
+  get(0, 0)
+
+  function get (n, depth) {
+    self._get(n, function f (err, node) {
+      if (err) return cb(err)
+      if (!node) node = { type: REGION, regions: [] }
+      if (node.type === REGION) {
+        for (var i = 0; i < node.regions.length; i++) {
+          var r = node.regions[i]
+          if (self._overlappingRange(q, r.range)) {
+            pending++
+            get(r.node, depth + 1)
+          }
+        }
+      } else if (node.type === POINTS) {
+        for (var i = 0; i < node.points.length; i++) {
+          var p = node.points[i]
+          if (self._overlappingPoint(q, p.point)) {
+            console.log('DEPTH', depth)
+            results.push(p)
+          }
         }
       }
-    } else if (node.type === POINTS) {
-      for (var i = 0; i < node.points.length; i++) {
-        var p = node.points[i]
-        if (self._overlappingPoint(q, p.point)) results.push(p)
-      }
-    }
-    if (--pending === 0) cb(null, results)
-  })
+      if (--pending === 0) cb(null, results)
+    })
+  }
 }
 
 KDB.prototype._get = function (n, cb) {
