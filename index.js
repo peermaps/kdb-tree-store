@@ -69,7 +69,7 @@ KDB.prototype.query = function (q, cb) {
         for (var i = 0; i < node.points.length; i++) {
           var p = node.points[i]
           if (self._overlappingPoint(q, p.point)) {
-            console.log('DEPTH', depth)
+            //console.log('DEPTH', depth)
             results.push(p)
           }
         }
@@ -246,14 +246,14 @@ KDB.prototype._insert = function (pt, value, cb) {
       var pivot = median(coords)
       if (!node.parent) return cb(new Error('unexpectedly at the root node'))
 
-      if (self._willOverflow(node.parent.node)) {
+      if (self._willOverflow(node.parent.node, 1)) {
         ;(function loop (p) {
-          if (!self._willOverflow(p.node)) {
+          if (!self._willOverflow(p.node, 1)) {
             return insert(p.node, depth+1)
           }
           self._splitRegionNode(p, pivot, axis, function (err, right) {
             if (err) return cb(err)
-            if (p.node.n === 0) {
+            if (p.node.n === 0 || self._willOverflow(p.node, 1)) {
               p.range = regionRange(self.dim, p.node.regions)
               var root = {
                 type: REGION,
@@ -270,8 +270,6 @@ KDB.prototype._insert = function (pt, value, cb) {
                 if (err) cb(err)
                 else if (--pending === 0) insert(root, 0)
               }
-            } else if (self._willOverflow(p.node)) {
-              throw new Error('OVERFLOW')
             } else {
               p.node.regions.push(right)
               self._put(p.node.n, p.node, function (err) {
@@ -443,8 +441,8 @@ function regionRange (dim, regions) {
   return range
 }
 
-KDB.prototype._willOverflow = function (node) {
-  return 3 + (node.regions.length + 1) * this._rsize > this.size
+KDB.prototype._willOverflow = function (node, spots) {
+  return 3 + (node.regions.length + spots) * this._rsize > this.size
 }
 
 function noop () {}
