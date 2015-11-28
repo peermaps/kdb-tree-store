@@ -239,9 +239,9 @@ KDB.prototype._insert = function (pt, value, cb) {
       var pivot = median(coords)
       if (!node.parent) return cb(new Error('unexpectedly at the root node'))
 
-      if (self._overflowRegion(node.parent.node)) {
+      if (self._willOverflow(node.parent.node)) {
         ;(function loop (p) {
-          if (!self._overflowRegion(p.node)) {
+          if (!self._willOverflow(p.node)) {
             return insert(p.node, depth+1)
           }
           self._splitRegionNode(p, pivot, axis, function (err, right) {
@@ -263,7 +263,8 @@ KDB.prototype._insert = function (pt, value, cb) {
                 if (err) cb(err)
                 else if (--pending === 0) insert(root, 0)
               }
-            } else if (self._overflowRegion(p.node)) {
+            } else if (self._willOverflow(p.node)) {
+              console.log('UNEXPECTED OVERFLOW')
               cb(new Error('unexpected overflow!'))
             } else {
               p.node.regions.push(right)
@@ -439,7 +440,7 @@ function regionRange (dim, regions) {
   return range
 }
 
-KDB.prototype._overflowRegion = function (node) {
+KDB.prototype._willOverflow = function (node) {
   return 3 + (node.regions.length + 1) * this._rsize > this.size
 }
 
