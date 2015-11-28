@@ -1,5 +1,7 @@
 var median = require('median')
 var once = require('once')
+var Readable = require('readable-stream').Readable
+var xtend = require('xtend')
 
 var REGION = 0, POINTS = 1
 var builtinTypes = require('./types.js')
@@ -37,11 +39,12 @@ KDB.prototype.query = function (q, opts, cb) {
     opts = {}
   }
   if (!opts) opts = {}
-  cb = once(cb || noop)
+  if (!cb) cb = noop
+  if (!opts.each) cb = once(cb)
   if (!Array.isArray(q[0])) q = q.map(function (x) { return [x,x] })
 
   var pending = 1
-  var results = []
+  var results = opts.each ? null : []
   get(0, 0)
 
   function get (n, depth) {
@@ -60,15 +63,28 @@ KDB.prototype.query = function (q, opts, cb) {
         for (var i = 0; i < node.points.length; i++) {
           var p = node.points[i]
           if (self._overlappingPoint(q, p.point)) {
-            if (opts.depth) {
-              results.push({ depth: depth, point: p })
-            } else results.push(p)
+            if (opts.depth) p.depth = depth
+            if (results) results.push(p)
+            else cb(null, p)
           }
         }
       }
       if (--pending === 0) cb(null, results)
     })
   }
+}
+
+KDB.prototype.queryStream = function (q, opts) {
+  var self = this
+  if (!opts) opts = {}
+  var stream = new Readable({ objectMode: true })
+  stream._read = function () {}
+  self.query(q, xtend(opts, { each: true }), function (err, p) {
+    if (err) stream.emit('error', err)
+    else if (p) stream.push(p)
+    else stream.push(null)
+  })
+  return stream
 }
 
 KDB.prototype._get = function (n, cb) {

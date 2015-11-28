@@ -5,7 +5,7 @@ var tmpdir = require('os').tmpdir()
 var path = require('path')
 var file = path.join(tmpdir, 'kdb-tree-' + Math.random())
 
-var n = 5000
+var n = 500
 var kdb = kdbtree({
   types: [ 'float32', 'float32', 'float32' ],
   size: 1024,
@@ -23,6 +23,6 @@ for (var i = 0; i < n; i++) (function () {
 })()
 
 function check () {
-  kdb.query([[-100,0],[0,50],[-50,-40]])
+  kdb.queryStream([[-100,0],[0,50],[-50,-20]])
     .on('data', console.log)
 }
