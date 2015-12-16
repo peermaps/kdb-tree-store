@@ -2,12 +2,13 @@
 
 k-dimensional B tree backed to a chunk store
 
-This code is based on the [original kdb tree paper](http://www.ccs.neu.edu/home/zhoupf/teaching/csu430/paper/kd-b-tree.pdf)
-and the algorithm description in "Data Structures and Algorithms in C++, 4th
-edition".
+This code is based on the [original kdb tree paper][1] and the algorithm
+description in "Data Structures and Algorithms in C++, 4th edition".
 
 For an in-memory version of this algorithm, look at the
 [kdb-tree](https://npmjs.com/package/kdb-tree) package.
+
+[1]: http://www.ccs.neu.edu/home/zhoupf/teaching/csu430/paper/kd-b-tree.pdf
 
 # example
 
@@ -21,7 +22,7 @@ var file = path.join(tmpdir, 'kdb-tree-' + Math.random())
 
 var n = 5000
 var kdb = kdbtree({
-  types: [ 'float32', 'float32', 'float32' ],
+  types: [ 'float32', 'float32', 'float32', 'uint32' ],
   size: 1024,
   store: fdstore(1024, file)
 })
@@ -53,7 +54,8 @@ var kdbtree = require('kdb-tree-store')
 
 Create a new kdb tree instance `kdb` given `opts`:
 
-* `opts.types` - array of data types for each dimension
+* `opts.types` - array of data types for each dimension plus the payload type at
+the end
 * `opts.store` - [chunk store](https://npmjs.com/package/abstract-chunk-store) instance
 * `opts.size` - size of the chunks in the chunk store
 * `opts.available` - next free chunk index to use, set if loading a previously
@@ -94,6 +96,7 @@ These data types are provided under string aliases:
 * `int8`
 * `int16`
 * `int32`
+* `buffer[BYTES]` - ex: `buffer[10]` for 10 bytes
 
 Otherwise, a data type must be an object with these properties:
 
@@ -106,6 +109,9 @@ Otherwise, a data type must be an object with these properties:
 * `t.cmp.lte(a, b)`
 * `t.cmp.gt(a, b)`
 * `t.cmp.gte(a, b)`
+
+The combined size of all the types in a chunk must be below the `opts.size`
+given in the `kdbtree()` constructor.
 
 # balancing
 
