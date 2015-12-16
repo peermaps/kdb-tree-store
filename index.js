@@ -24,7 +24,7 @@ function KDB (opts) {
     if (typeof t === 'string') throw new Error('unrecognized type: ' + t)
     return t
   })
-  this.dim = this.types.length
+  this.dim = this.types.length - 1
   this._insertQueue = []
   this._pending = 0
 
@@ -90,7 +90,6 @@ KDB.prototype.queryStream = function (q, opts) {
 }
 
 KDB.prototype.nearest = function (pt, cb) {
-  var path = []
 }
 
 KDB.prototype._get = function (n, cb) {

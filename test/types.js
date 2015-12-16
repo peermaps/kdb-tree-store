@@ -11,7 +11,7 @@ var file = path.join(tmpdir, 'kdb-tree-' + Math.random())
 test('types', function (t) {
   var n = 200
   var kdb = kdbtree({
-    types: [ 'f64', 'f32', 'uint16' ],
+    types: [ 'f64', 'f32', 'uint16', 'uint32' ],
     size: 4096,
     store: fdstore(4096, file)
   })

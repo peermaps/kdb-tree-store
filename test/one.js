@@ -9,7 +9,7 @@ var file = path.join(tmpdir, 'kdb-tree-' + Math.random())
 test('one point', function (t) {
   t.plan(3)
   var kdb = kdbtree({
-    types: [ 'float32', 'float32', 'float32' ],
+    types: [ 'float32', 'float32', 'float32', 'uint32' ],
     size: 4096,
     store: fdstore(4096, file)
   })
