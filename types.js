@@ -42,10 +42,10 @@ module.exports = function (t) {
   } else if (/^u(|i|int)?8$/.test(t)) {
     return {
       read: function (buf, offset) {
-        return buf.readUInt8BE(offset)
+        return buf.readUInt8(offset)
       },
       write: function (buf, value, offset) {
-        return buf.writeUInt8BE(value, offset)
+        return buf.writeUInt8(value, offset)
       },
       size: 1,
       min: 0,
@@ -81,10 +81,10 @@ module.exports = function (t) {
   } else if (/^s?(|i|int)?8$/.test(t)) {
     return {
       read: function (buf, offset) {
-        return buf.readInt8BE(offset)
+        return buf.readInt8(offset)
       },
       write: function (buf, value, offset) {
-        return buf.writeInt8BE(value, offset)
+        return buf.writeInt8(value, offset)
       },
       size: 1,
       min: -128,
