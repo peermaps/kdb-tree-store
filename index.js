@@ -131,11 +131,12 @@ KDB.prototype._get = function (n, cb) {
           offset += t.size
           pt.push(coord)
         }
+        var t = self.types[j]
         node.points.push({
           point: pt,
-          value: buf.readUInt32BE(offset)
+          value: t.read(buf, offset)
         })
-        offset += 4
+        offset += t.size
       }
       cb(null, node)
     } else cb(new Error('unknown type: ' + node.type))
@@ -172,8 +173,9 @@ KDB.prototype._put = function (n, node, cb) {
         t.write(buf, node.points[i].point[j], offset)
         offset += t.size
       }
-      buf.writeUInt32BE(node.points[i].value, offset)
-      offset += 4
+      var t = self.types[j]
+      t.write(buf, node.points[i].value, offset)
+      offset += t.size
     }
   } else cb(new Error('unknown type: ' + node.type))
   self.store.put(n, buf, cb)
