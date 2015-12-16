@@ -31,7 +31,7 @@ test('buffer payload', function (t) {
         t.equal(pts.length, 1, 'single query result for single point')
         if (pts[0]) {
           approx(t, pts[0].point, [x,y,z])
-          t.equal(pts[0].value, value, 'point value')
+          t.deepEqual(pts[0].value, value, 'point value')
         } else t.fail('no point')
         if (--pending === 0) check()
       })

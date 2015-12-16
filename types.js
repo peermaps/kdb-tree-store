@@ -3,6 +3,7 @@ var FLT = almostEqual.FLT_EPSILON
 var DBL = almostEqual.DBL_EPSILON
 
 module.exports = function (t) {
+  var m
   if (/^(f|f32|float32|float)$/.test(t)) {
     return {
       read: function (buf, offset) {
@@ -116,6 +117,22 @@ module.exports = function (t) {
       min: -2147483648,
       max: 2147483647,
       cmp: icmp
+    }
+  } else if (m = /^buf(?:fer)?(?:\[(\d+)|(\d+)\])/.exec(t)) {
+    var size = Number(m[1] || m[2])
+    return {
+      read: function (buf, offset) {
+        return buf.slice(offset, offset + size)
+      },
+      write: function (buf, value, offset) {
+        value.copy(buf, offset, 0, size)
+      },
+      size: size,
+      min: new Buffer(size).fill(0x00),
+      max: new Buffer(size).fill(0xff),
+      cmp: function (a, b) {
+        return Buffer.compare(a, b)
+      }
     }
   }
 }
