@@ -30,7 +30,7 @@ function KDB (opts) {
 
   this._rsize = 4
   for (var i = 0; i < this.dim; i++) this._rsize += this.types[i].size * 2
-  this._psize = 4
+  this._psize = this.types[this.dim].size
   for (var i = 0; i < this.dim; i++) this._psize += this.types[i].size
 }
 
