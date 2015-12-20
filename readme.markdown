@@ -108,6 +108,7 @@ Otherwise, a data type must be an object with these properties:
 * `t.size` (in bytes)
 * `t.min`
 * `t.max`
+* `t.cmp.eq(a, b)`
 * `t.cmp.lt(a, b)`
 * `t.cmp.lte(a, b)`
 * `t.cmp.gt(a, b)`

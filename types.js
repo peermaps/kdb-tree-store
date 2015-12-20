@@ -16,6 +16,7 @@ module.exports = function (t) {
       min: -Infinity,
       max: Infinity,
       cmp: {
+        eq: function (a, b) { return almostEqual(a, b, FLT, FLT) },
         lt: function (a, b) { return a < b && !almostEqual(a, b, FLT, FLT) },
         lte: function (a, b) { return a <= b || almostEqual(a, b, FLT, FLT) },
         gt: function (a, b) { return a > b && !almostEqual(a, b, FLT, FLT) },
@@ -34,6 +35,7 @@ module.exports = function (t) {
       min: -Infinity,
       max: Infinity,
       cmp: {
+        eq: function (a, b) { return almostEqual(a, b, DBL, DBL) },
         lt: function (a, b) { return a < b && !almostEqual(a, b, DBL, DBL) },
         lte: function (a, b) { return a <= b || almostEqual(a, b, DBL, DBL) },
         gt: function (a, b) { return a > b && !almostEqual(a, b, DBL, DBL) },
@@ -137,7 +139,8 @@ module.exports = function (t) {
   }
 }
 
-var icmp = { lt: lt, lte: lte, gt: gt, gte: gte }
+var icmp = { eq: eq, lt: lt, lte: lte, gt: gt, gte: gte }
+function eq (a, b) { return a === b }
 function lt (a, b) { return a < b }
 function lte (a, b) { return a <= b }
 function gt (a, b) { return a > b }

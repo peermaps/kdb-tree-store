@@ -191,6 +191,11 @@ KDB.prototype.remove = function (q, opts, cb) {
 
   var pending = 1
   var removed = opts.each ? null : []
+  var filter = opts.filter
+  if (!filter && opts.value) {
+    var eq = opts.value ? self.types[self.types.length-1].cmp.eq : null
+    filter = function (p) { return eq(p.value, opts.value) }
+  }
   get(0, 0)
 
   function get (n, depth) {
@@ -209,7 +214,7 @@ KDB.prototype.remove = function (q, opts, cb) {
         var rm = 0
         for (var i = 0; i < node.points.length; i++) {
           var p = node.points[i]
-          if (self._overlappingPoint(q, p.point)) {
+          if (self._overlappingPoint(q, p.point) && filter(p)) {
             rm++
             node.points.splice(i, 1)
             i--
