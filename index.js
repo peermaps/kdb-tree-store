@@ -186,11 +186,34 @@ KDB.prototype.remove = function (q, opts, cb) {
     opts = {}
   }
   if (!opts) opts = {}
+  if (!Array.isArray(q) && q && typeof q === 'object') {
+    opts = q
+    q = []
+    for (var i = 0; i < self.dim; i++) {
+      var t = self.types[i]
+      q.push([t.min,t.max])
+    }
+  }
   if (!Array.isArray(q[0])) q = q.map(function (x) { return [x,x] })
   cb = once(cb || noop)
-
-  var pending = 1
   var removed = opts.each ? null : []
+
+  if (opts.index) {
+    return self._get(opts.index[0], function (err, node) {
+      if (err) return cb(err)
+      if (!node) return cb(null, removed)
+      if (node.type !== POINTS) return cb(new Error('not a point node'))
+      var p = node.points[opts.index[1]]
+      if (removed) removed.push(p)
+      else cb(null, p)
+      node.points.splice(opts.index[1], 1)
+      self._put(opts.index[0], node, function (err) {
+        if (err) cb(err)
+        else cb(null, removed)
+      })
+    })
+  }
+  var pending = 1
   var filter = opts.filter
   if (!filter && opts.value) {
     var eq = opts.value ? self.types[self.types.length-1].cmp.eq : null
