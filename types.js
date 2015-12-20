@@ -132,8 +132,12 @@ module.exports = function (t) {
       size: size,
       min: new Buffer(size).fill(0x00),
       max: new Buffer(size).fill(0xff),
-      cmp: function (a, b) {
-        return Buffer.compare(a, b)
+      cmp: {
+        eq: function (a, b) { return Buffer.compare(a, b) === 0 },
+        lt: function (a, b) { return Buffer.compare(a, b) < 0 },
+        lte: function (a, b) { return Buffer.compare(a, b) <= 0 },
+        gt: function (a, b) { return Buffer.compare(a, b) > 0 },
+        gte: function (a, b) { return Buffer.compare(a, b) >= 0 }
       }
     }
   }
