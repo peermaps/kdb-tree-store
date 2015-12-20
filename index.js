@@ -196,6 +196,7 @@ KDB.prototype.remove = function (q, opts, cb) {
     var eq = opts.value ? self.types[self.types.length-1].cmp.eq : null
     filter = function (p) { return eq(p.value, opts.value) }
   }
+  if (!filter) filter = function () { return true }
   get(0, 0)
 
   function get (n, depth) {
