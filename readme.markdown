@@ -80,6 +80,17 @@ Return a readable `stream` of query results from the query `q`.
 
 Insert `value` (a 32-bit integer) at a point `pt`.
 
+## kdb.remove(q, opts={}, cb)
+## kdb.remove(opts, cb)
+
+Remove all the points in a query `q`, modified by these options:
+
+* `opts.value` - only remove points that value this value
+* `opts.filter(pt)` - only remove points where this function returns true.
+Points have `point` and `value` properties. Precedence over `opts.value`.
+* `opts.index` - remove exactly one item by its `[chunkIndex,pointIndex]`.
+Highest precedence.
+
 ## kdb.on('available', function (n) {})
 
 Index `n` of the next available chunk to use.
