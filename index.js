@@ -66,6 +66,7 @@ KDB.prototype.query = function (q, opts, cb) {
           var p = node.points[i]
           if (self._overlappingPoint(q, p.point)) {
             if (opts.depth) p.depth = depth
+            if (opts.index) p.index = [n,i]
             if (results) results.push(p)
             else cb(null, p)
           }
