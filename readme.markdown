@@ -67,7 +67,10 @@ Query for results with `q`, an array of `[min,max]` arrays for each dimension.
 The results are given as an array of points in `cb(err, results)`. Each element
 in `results` has a `point` and `value` property.
 
-Add depth information to each point in the tree by setting `opts.depth = true`.
+* `opts.depth` - add depth information to each matching point when true in a
+`depth` property (default: `false`)
+* `opts.index` - add `[chunkIndex,pointIndex]` pairs to each matching point when
+true in an `index` property (default: `false`)
 
 ## var stream = kdb.queryStream(q, opts={})
 
