@@ -179,6 +179,57 @@ KDB.prototype._put = function (n, node, cb) {
   self.store.put(n, buf, cb)
 }
 
+KDB.prototype.remove = function (q, opts, cb) {
+  var self = this
+  if (typeof opts === 'function') {
+    cb = opts
+    opts = {}
+  }
+  if (!opts) opts = {}
+  if (!Array.isArray(q[0])) q = q.map(function (x) { return [x,x] })
+  cb = once(cb || noop)
+
+  var pending = 1
+  var removed = opts.each ? null : []
+  get(0, 0)
+
+  function get (n, depth) {
+    self._get(n, function f (err, node) {
+      if (err) return cb(err)
+      if (!node) node = { type: REGION, regions: [] }
+      if (node.type === REGION) {
+        for (var i = 0; i < node.regions.length; i++) {
+          var r = node.regions[i]
+          if (self._overlappingRange(q, r.range)) {
+            pending++
+            get(r.node, depth + 1)
+          }
+        }
+      } else if (node.type === POINTS) {
+        var rm = 0
+        for (var i = 0; i < node.points.length; i++) {
+          var p = node.points[i]
+          if (self._overlappingPoint(q, p.point)) {
+            rm++
+            node.points.splice(i, 1)
+            i--
+            if (removed) removed.push(p)
+            else cb(null, p)
+          }
+        }
+        if (rm > 0) {
+          pending++
+          self._put(n, node, function f (err) {
+            if (err) cb(err)
+            else if (--pending === 0) cb(null, removed)
+          })
+        }
+      }
+      if (--pending === 0) cb(null, removed)
+    })
+  }
+}
+
 KDB.prototype.insert = function (pt, value, cb) {
   var self = this
   if (self._pending++ === 0) {
