@@ -58,7 +58,7 @@ KDB.prototype.query = function (q, opts, cb) {
           var r = node.regions[i]
           if (self._overlappingRange(q, r.range)) {
             pending++
-            get(r.node, depth + 1)
+            if (r.node !== node.node) get(r.node, depth + 1)
           }
         }
       } else if (node.type === POINTS) {
@@ -231,7 +231,7 @@ KDB.prototype.remove = queue(function (q, opts, cb) {
         for (var i = 0; i < node.regions.length; i++) {
           var r = node.regions[i]
           if (self._overlappingRange(q, r.range)) {
-            get(r.node, depth + 1)
+            if (r.node !== n) get(r.node, depth + 1)
           }
         }
       } else if (node.type === POINTS) {
@@ -328,7 +328,7 @@ KDB.prototype.insert = queue(function (pt, value, cb) {
     if (node.type === REGION) {
       for (var i = 0; i < node.regions.length; i++) {
         var r = node.regions[i]
-        if (self._overlappingRange(q, r.range)) {
+        if (r.node !== node.n && self._overlappingRange(q, r.range)) {
           if (typeof r.node === 'number') {
             self._get(r.node, function (err, rnode) {
               rnode.parent = { node: node, index: i }
