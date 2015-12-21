@@ -25,7 +25,7 @@ function KDB (opts) {
     return t
   })
   this.dim = this.types.length - 1
-  this._insertQueue = []
+  this._queue = []
   this._pending = 0
 
   this._rsize = 4
@@ -179,7 +179,7 @@ KDB.prototype._put = function (n, node, cb) {
   self.store.put(n, buf, cb)
 }
 
-KDB.prototype.remove = function (q, opts, cb) {
+KDB.prototype.remove = queue(function (q, opts, cb) {
   var self = this
   if (typeof opts === 'function') {
     cb = opts
@@ -213,7 +213,7 @@ KDB.prototype.remove = function (q, opts, cb) {
       })
     })
   }
-  var pending = 1
+  var pending = 0
   var filter = opts.filter
   if (!filter && opts.value) {
     var eq = opts.value ? self.types[self.types.length-1].cmp.eq : null
@@ -223,14 +223,14 @@ KDB.prototype.remove = function (q, opts, cb) {
   get(0, 0)
 
   function get (n, depth) {
+    pending++
     self._get(n, function f (err, node) {
       if (err) return cb(err)
-      if (!node) node = { type: REGION, regions: [] }
-      if (node.type === REGION) {
+      if (!node) {}
+      else if (node.type === REGION) {
         for (var i = 0; i < node.regions.length; i++) {
           var r = node.regions[i]
           if (self._overlappingRange(q, r.range)) {
-            pending++
             get(r.node, depth + 1)
           }
         }
@@ -247,8 +247,7 @@ KDB.prototype.remove = function (q, opts, cb) {
           }
         }
         if (rm > 0) {
-          pending++
-          self._put(n, node, function f (err) {
+          return self._put(n, node, function (err) {
             if (err) cb(err)
             else if (--pending === 0) cb(null, removed)
           })
@@ -257,30 +256,47 @@ KDB.prototype.remove = function (q, opts, cb) {
       if (--pending === 0) cb(null, removed)
     })
   }
-}
+})
 
-KDB.prototype.insert = function (pt, value, cb) {
-  var self = this
-  if (self._pending++ === 0) {
-    self._insert(pt, value, oninsert(cb))
-  } else {
-    self._insertQueue.push([pt,value,cb])
-  }
-  function done () {
-    if (self._insertQueue.length === 0) return
-    var q = self._insertQueue.shift()
-    self._insert(q[0], q[1], oninsert(q[2]))
-  }
-  function oninsert (f) {
-    return function (err) {
-      f(err)
-      self._pending--
-      done()
+function queue (fn) {
+  return function () {
+    var self = this
+    var called = false
+    var args = addcb([].slice.call(arguments), oninsert)
+    if (self._pending++ === 0) {
+      fn.apply(self, args)
+    } else {
+      self._queue.push([fn,args])
+    }
+    function done () {
+      if (self._queue.length === 0) return
+      var q = self._queue.shift()
+      q[0].apply(self, q[1])
+    }
+    function oninsert (f) {
+      return function () {
+        if (f) f.apply(this, arguments)
+        if (called) return
+        called = true
+        self._pending--
+        done()
+      }
     }
   }
 }
 
-KDB.prototype._insert = function (pt, value, cb) {
+function addcb (args, f) {
+  for (var i = 0; i < args.length; i++) {
+    if (typeof args[i] === 'function') {
+      args[i] = f(args[i])
+      return args
+    }
+  }
+  args.push(f())
+  return args
+}
+
+KDB.prototype.insert = queue(function (pt, value, cb) {
   var self = this
   cb = once(cb || noop)
   var q = [], rec = { point: pt, value: value }
@@ -394,7 +410,7 @@ KDB.prototype._insert = function (pt, value, cb) {
       }
     }
   }
-}
+})
 
 KDB.prototype._splitPointNode = function (node, pivot, axis, cb) {
   var self = this
