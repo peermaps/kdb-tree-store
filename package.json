@@ -31,6 +31,7 @@
   },
   "dependencies": {
     "almost-equal": "^1.0.0",
+    "comparable-storable-types": "^1.0.0",
     "inherits": "^2.0.1",
     "median": "~0.0.2",
     "once": "^1.3.3",

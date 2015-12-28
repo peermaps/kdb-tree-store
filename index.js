@@ -6,7 +6,7 @@ var inherits = require('inherits')
 var EventEmitter = require('events').EventEmitter
 
 var REGION = 0, POINTS = 1
-var builtinTypes = require('./types.js')
+var builtinTypes = require('comparable-storable-types')
 
 module.exports = KDB
 inherits(KDB, EventEmitter)
