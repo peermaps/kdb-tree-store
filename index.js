@@ -4,9 +4,10 @@ var Readable = require('readable-stream').Readable
 var xtend = require('xtend')
 var inherits = require('inherits')
 var EventEmitter = require('events').EventEmitter
+var overlappingBox = require('bounding-box-overlap-test')
+var builtinTypes = require('comparable-storable-types')
 
 var REGION = 0, POINTS = 1
-var builtinTypes = require('comparable-storable-types')
 
 module.exports = KDB
 inherits(KDB, EventEmitter)
@@ -527,17 +528,7 @@ function overlappingmm (cmp, amin, amax, bmin, bmax) {
 }
 
 KDB.prototype._overlappingRange = function (a, b) {
-  for (var i = 0; i < a.length; i++) {
-    var cmp = this.types[i].cmp
-    if (!overlapping(cmp, a[i], b[i])) return false
-  }
-  return true
-}
-
-function overlapping (cmp, a, b) {
-  return (cmp.gte(a[0], b[0]) && cmp.lte(a[0], b[1]))
-    || (cmp.gte(a[1], b[0]) && cmp.lte(a[1], b[1]))
-    || (cmp.lt(a[0], b[0]) && cmp.gt(a[1], b[1]))
+  return overlappingBox(a, b)
 }
 
 function clone (xs) {
