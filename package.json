@@ -1,6 +1,6 @@
 {
   "name": "kdb-tree-store",
-  "version": "3.0.4",
+  "version": "3.1.0",
   "description": "kdb tree implementation using a chunk store",
   "main": "index.js",
   "scripts": {
