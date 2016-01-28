@@ -23,7 +23,6 @@ var file = path.join(tmpdir, 'kdb-tree-' + Math.random())
 var n = 5000
 var kdb = kdbtree({
   types: [ 'float32', 'float32', 'float32', 'uint32' ],
-  size: 1024,
   store: fdstore(1024, file)
 })
 var pending = n
@@ -57,7 +56,6 @@ Create a new kdb tree instance `kdb` given `opts`:
 * `opts.types` - array of data types for each dimension plus the payload type at
 the end
 * `opts.store` - [chunk store](https://npmjs.com/package/abstract-chunk-store) instance
-* `opts.size` - size of the chunks in the chunk store
 * `opts.available` - next free chunk index to use, set if loading a previously
 saved file with data from `'available'` events
 
@@ -125,8 +123,8 @@ Otherwise, a data type must be an object with these properties:
 * `t.cmp.gt(a, b)`
 * `t.cmp.gte(a, b)`
 
-The combined size of all the types in a chunk must be below the `opts.size`
-given in the `kdbtree()` constructor.
+The combined size of all the types in a chunk must be below the chunkLength of
+the `opts.store` given in the `kdbtree()` constructor.
 
 # balancing
 

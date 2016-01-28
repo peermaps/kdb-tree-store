@@ -17,7 +17,7 @@ function KDB (opts) {
   if (!(this instanceof KDB)) return new KDB(opts)
   EventEmitter.call(this)
   this.store = opts.store
-  this.size = opts.size
+  this.size = opts.size || this.store.chunkLength
   this._available = opts.available || 0
   this.types = opts.types.map(function (t) {
     var bt = builtinTypes(t)

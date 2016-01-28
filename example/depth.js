@@ -8,7 +8,6 @@ var file = path.join(tmpdir, 'kdb-tree-' + Math.random())
 var n = Number(process.argv[2])
 var kdb = kdbtree({
   types: [ 'float32', 'float32', 'float32', 'uint32' ],
-  size: 1024,
   store: fdstore(1024, file)
 })
 var pending = n
