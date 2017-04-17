@@ -76,7 +76,7 @@ Return a readable `stream` of query results from the query `q`.
 
 ## kdb.insert(pt, value, cb)
 
-Insert `value` (a 32-bit integer) at a point `pt`.
+Insert `value` at a point `pt`.
 
 ## kdb.remove(q, opts={}, cb)
 ## kdb.remove(opts, cb)
@@ -125,6 +125,30 @@ Otherwise, a data type must be an object with these properties:
 
 The combined size of all the types in a chunk must be below the chunkLength of
 the `opts.store` given in the `kdbtree()` constructor.
+
+# 32-bit floating point error
+
+Javascript `Number`s are IEEE-754 floating-point values (54-bits). If you choose
+to use the `float`/`float32` data type, be aware that rounding errors can
+silently occur, making `kdb.remove` or `kdb.query` operations at specific
+coordinates fail.
+
+One workaround is to quantize the values you `insert` so they are consistent
+with what `kdb-tree-store` will write for that data type, e.g.
+
+```
+function insert2d (x, y, value) {
+  x = quant(x, kdb.types[0])
+  y = quant(y, kdb.types[1])
+  kdb.insert([x, y], value)
+}
+
+function quant (v, type) {
+  var buf = new Buffer(type.size)
+  type.write(buf, v, 0)
+  return type.read(buf, 0)
+}
+```
 
 # balancing
 
