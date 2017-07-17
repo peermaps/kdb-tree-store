@@ -97,6 +97,7 @@ KDB.prototype.queryStream = function (q, opts) {
 KDB.prototype._get = function (n, cb) {
   var self = this
   self.store.get(n, function (err, buf) {
+    if (err && err.notFound) return cb(null, undefined)
     if (err) return cb(err)
     if (buf.length === 0) return cb(null, undefined)
     var node = { type: buf[0], n: n }
