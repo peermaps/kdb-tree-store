@@ -401,7 +401,7 @@ KDB.prototype.insert = queue(function (pt, value, cb) {
           })
         })(node.parent)
       } else {
-        self._splitPointNode(node, pivot, axis, function (err, right) {
+        self._splitPointNode(node.n, pivot, axis, function (err, left, right) {
           if (err) return cb(err)
           var pnode = node.parent.node
           var pix = node.parent.index
@@ -423,25 +423,29 @@ KDB.prototype.insert = queue(function (pt, value, cb) {
   }
 })
 
-KDB.prototype._splitPointNode = function (node, pivot, axis, cb) {
+KDB.prototype._splitPointNode = function (nodeIdx, pivot, axis, cb) {
   var self = this
   var right = { type: POINTS, points: [] }
-  for (var i = 0; i < node.points.length; i++) {
-    var p = node.points[i]
-    if (p.point[axis] >= pivot) {
-      right.points.push(p)
-      node.points.splice(i, 1)
-      i--
+  self._get(nodeIdx, function (err, node) {
+    if (err) return cb(err)
+
+    for (var i = 0; i < node.points.length; i++) {
+      var p = node.points[i]
+      if (p.point[axis] >= pivot) {
+        right.points.push(p)
+        node.points.splice(i, 1)
+        i--
+      }
     }
-  }
-  right.n = self._alloc()
-  var pending = 2
-  self._put(right.n, right, onput)
-  self._put(node.n, node, onput)
-  function onput (err) {
-    if (err) cb(err)
-    else if (--pending === 0) cb(null, right)
-  }
+    right.n = self._alloc()
+    var pending = 2
+    self._put(right.n, right, onput)
+    self._put(node.n, node, onput)
+    function onput (err) {
+      if (err) cb(err)
+      else if (--pending === 0) cb(null, node, right)
+    }
+  })
 }
 
 KDB.prototype._splitRegionNode = function (range, pivot, axis, cb) {
@@ -481,7 +485,7 @@ KDB.prototype._splitRegionNode = function (range, pivot, axis, cb) {
       self._get(r.node, function (err, rnode) {
         if (err) return cb(err)
         if (rnode.type === POINTS) {
-          self._splitPointNode(rnode, pivot, axis, function (err, rn) {
+          self._splitPointNode(rnode.n, pivot, axis, function (err, ln, rn) {
             if (err) return cb(err)
             rright.node = rn
             loop(i+1)
