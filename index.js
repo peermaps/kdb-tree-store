@@ -372,7 +372,7 @@ KDB.prototype.insert = queue(function (pt, value, cb) {
           if (!self._willOverflow(p.node, 1)) {
             return insert(p.node, depth+1)
           }
-          self._splitRegionNode(p, pivot, axis, function (err, right) {
+          self._splitRegionNode(p, p.node, pivot, axis, function (err, right) {
             if (err) return cb(err)
             if (p.node.n === 0 || self._willOverflow(p.node, 1)) {
               p.range = self._regionRange(p.node.regions)
@@ -448,9 +448,9 @@ KDB.prototype._splitPointNode = function (nodeIdx, pivot, axis, cb) {
   })
 }
 
-KDB.prototype._splitRegionNode = function (range, pivot, axis, cb) {
+KDB.prototype._splitRegionNode = function (left, node, pivot, axis, cb) {
   var self = this
-  var rrange = self._regionRange(range.node.regions)
+  var rrange = self._regionRange(node.regions)
   rrange[axis][0] = pivot
 
   var right = {
@@ -460,18 +460,17 @@ KDB.prototype._splitRegionNode = function (range, pivot, axis, cb) {
       regions: []
     }
   }
-  var left = range
 
   ;(function loop (i) {
-    if (i >= left.node.regions.length) return done()
+    if (i >= node.regions.length) return done()
 
-    var r = left.node.regions[i]
+    var r = node.regions[i]
     if (r.range[axis][1] <= pivot) {
       // already in the right place
       loop(i+1)
     } else if (r.range[axis][0] >= pivot) {
       right.node.regions.push(r)
-      left.node.regions.splice(i, 1)
+      node.regions.splice(i, 1)
       loop(i)
     } else {
       var rright = {
@@ -491,8 +490,7 @@ KDB.prototype._splitRegionNode = function (range, pivot, axis, cb) {
             loop(i+1)
           })
         } else if (rnode.type === REGION) {
-          r.node = rnode
-          self._splitRegionNode(r, pivot, axis, function (err, spr) {
+          self._splitRegionNode(r, rnode, pivot, axis, function (err, spr) {
             if (err) return cb(err)
             rright.node = { type: REGION, regions: [ spr ] }
             rright.node.n = self._alloc()
