@@ -332,6 +332,8 @@ KDB.prototype.insert = queue(function (pt, value, cb) {
     } else insert(node, 0)
   })
 
+  var parents = []
+
   function insert (node, depth) {
     if (node.type === REGION) {
       for (var i = 0; i < node.regions.length; i++) {
@@ -342,11 +344,11 @@ KDB.prototype.insert = queue(function (pt, value, cb) {
         if (self._overlappingRange(q, r.range)) {
           if (typeof r.node === 'number') {
             self._get(r.node, function (err, rnode) {
-              rnode.parent = { node: node, index: i }
+              parents[rnode.n] = { node: node, index: i }
               insert(rnode, depth+1)
             })
           } else {
-            r.node.parent = { node: node, index: i }
+            parents[r.node.n] = { node: node, index: i }
             insert(r.node, depth+1)
           }
           return
@@ -365,9 +367,9 @@ KDB.prototype.insert = queue(function (pt, value, cb) {
         coords.push(node.points[i].point[axis])
       }
       var pivot = median(coords)
-      if (!node.parent) return cb(new Error('unexpectedly at the root node'))
+      if (!parents[node.n]) return cb(new Error('unexpectedly at the root node'))
 
-      if (self._willOverflow(node.parent.node, 1)) {
+      if (self._willOverflow(parents[node.n].node, 1)) {
         ;(function loop (p) {
           if (!self._willOverflow(p.node, 1)) {
             return insert(p.node, depth+1)
@@ -383,8 +385,8 @@ KDB.prototype.insert = queue(function (pt, value, cb) {
               var pending = 2
               var n = p.node.n
               p.node.n = self._alloc()
-              p.node.parent = root
-              right.node.parent = root
+              parents[p.node.n] = root
+              parents[right.node.n] = root
               self._put(p.node.n, p.node, done)
               self._put(n, root, done)
               function done (err) {
@@ -395,16 +397,16 @@ KDB.prototype.insert = queue(function (pt, value, cb) {
               p.node.regions.push(right)
               self._put(p.node.n, p.node, function (err) {
                 if (err) cb(err)
-                else loop(p.node.parent)
+                else loop(parents[p.node.n])
               })
             }
           })
-        })(node.parent)
+        })(parents[node.n])
       } else {
         self._splitPointNode(node.n, pivot, axis, function (err, left, right) {
           if (err) return cb(err)
-          var pnode = node.parent.node
-          var pix = node.parent.index
+          var pnode = parents[node.n].node
+          var pix = parents[node.n].index
           var lrange = clone(pnode.regions[pix].range)
           var rrange = clone(pnode.regions[pix].range)
           lrange[axis][1] = pivot
