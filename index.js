@@ -330,12 +330,12 @@ KDB.prototype.insert = queue(function (pt, value, cb) {
       self._put(self._alloc(), pts, function (err) {
         if (--pending === 0) f(err, node)
       })
-    } else insert(node.n, 0)
+    } else _insert(node.n, 0)
   })
 
   var parents = []
 
-  function insert (nodeIdx, depth) {
+  function _insert (nodeIdx, depth) {
     self._get(nodeIdx, function (err, node) {
       if (err) return cb(err)
       if (node.type === REGION) {
@@ -348,11 +348,11 @@ KDB.prototype.insert = queue(function (pt, value, cb) {
             if (typeof r.node === 'number') {
               self._get(r.node, function (err, rnode) {
                 parents[rnode.n] = { node: node, index: i }
-                insert(rnode.n, depth+1)
+                _insert(rnode.n, depth+1)
               })
             } else {
               parents[r.node.n] = { node: node, index: i }
-              insert(r.node.n, depth+1)
+              _insert(r.node.n, depth+1)
             }
             return
           }
@@ -375,7 +375,7 @@ KDB.prototype.insert = queue(function (pt, value, cb) {
         if (self._willOverflow(parents[node.n].node, 1)) {
           ;(function loop (p) {
             if (!self._willOverflow(p.node, 1)) {
-              return insert(p.node.n, depth+1)
+              return _insert(p.node.n, depth+1)
             }
             self._splitRegionNode(p.node, pivot, axis, function (err, right) {
               if (err) return cb(err)
@@ -394,7 +394,7 @@ KDB.prototype.insert = queue(function (pt, value, cb) {
                 self._put(n, root, done)
                 function done (err) {
                   if (err) cb(err)
-                  else if (--pending === 0) insert(n, 0)
+                  else if (--pending === 0) _insert(n, 0)
                 }
               } else {
                 p.node.regions.push(right)
@@ -420,7 +420,7 @@ KDB.prototype.insert = queue(function (pt, value, cb) {
             pnode.regions.push(rregion)
             self._put(pnode.n, pnode, function (err) {
               if (err) cb(err)
-              else insert(pnode.n, depth+1)
+              else _insert(pnode.n, depth+1)
             })
           })
         }
