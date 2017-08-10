@@ -450,9 +450,9 @@ KDB.prototype._splitPointNode = function (nodeIdx, pivot, axis, cb) {
 
 KDB.prototype._splitRegionNode = function (node, pivot, axis, cb) {
   var self = this
+
   var rrange = self._regionRange(node.regions)
   rrange[axis][0] = pivot
-
   var right = {
     range: rrange,
     node: {
@@ -479,8 +479,7 @@ KDB.prototype._splitRegionNode = function (node, pivot, axis, cb) {
       rright.range[axis][0] = pivot
       right.node.regions.push(rright)
 
-      var rleft = r
-      rleft.range[axis][1] = pivot
+      r.range[axis][1] = pivot
       self._get(r.node, function (err, rnode) {
         if (err) return cb(err)
         if (rnode.type === POINTS) {
