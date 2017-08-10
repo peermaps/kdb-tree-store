@@ -315,13 +315,14 @@ KDB.prototype.insert = queue(function (pt, value, cb) {
     else if (!node) {
       node = {
         type: REGION,
-        regions: [ { range: [], node: 1 } ]
+        regions: [ { range: [], node: 1 } ],
+        n: 0
       }
       for (var i = 0; i < self.dim; i++) {
         var t = self.types[i]
         node.regions[0].range.push([t.min,t.max])
       }
-      var pts = { type: POINTS, points: [] }
+      var pts = { type: POINTS, points: [], node: 1 }
       var pending = 2
       self._put(self._alloc(), node, function (err) {
         if (--pending === 0) f(err, node)
@@ -329,99 +330,102 @@ KDB.prototype.insert = queue(function (pt, value, cb) {
       self._put(self._alloc(), pts, function (err) {
         if (--pending === 0) f(err, node)
       })
-    } else insert(node, 0)
+    } else insert(node.n, 0)
   })
 
   var parents = []
 
-  function insert (node, depth) {
-    if (node.type === REGION) {
-      for (var i = 0; i < node.regions.length; i++) {
-        var r = node.regions[i]
-        if (r.node === node.n) {
-          return cb(new Error('corrupt data: region cycle detected'))
-        }
-        if (self._overlappingRange(q, r.range)) {
-          if (typeof r.node === 'number') {
-            self._get(r.node, function (err, rnode) {
-              parents[rnode.n] = { node: node, index: i }
-              insert(rnode, depth+1)
-            })
-          } else {
-            parents[r.node.n] = { node: node, index: i }
-            insert(r.node, depth+1)
+  function insert (nodeIdx, depth) {
+    self._get(nodeIdx, function (err, node) {
+      if (err) return cb(err)
+      if (node.type === REGION) {
+        for (var i = 0; i < node.regions.length; i++) {
+          var r = node.regions[i]
+          if (r.node === node.n) {
+            return cb(new Error('corrupt data: region cycle detected'))
           }
-          return
-        }
-      }
-      cb(new Error('INVALID STATE'))
-    } else if (node.type === POINTS) {
-      if (3 + (node.points.length + 1) * self._psize < self.size) {
-        node.points.push({ point: pt, value: value })
-        return self._put(node.n, node, cb)
-      }
-
-      var coords = []
-      var axis = (depth + 1) % pt.length
-      for (var i = 0; i < node.points.length; i++) {
-        coords.push(node.points[i].point[axis])
-      }
-      var pivot = median(coords)
-      if (!parents[node.n]) return cb(new Error('unexpectedly at the root node'))
-
-      if (self._willOverflow(parents[node.n].node, 1)) {
-        ;(function loop (p) {
-          if (!self._willOverflow(p.node, 1)) {
-            return insert(p.node, depth+1)
-          }
-          self._splitRegionNode(p.node, pivot, axis, function (err, right) {
-            if (err) return cb(err)
-            if (p.node.n === 0 || self._willOverflow(p.node, 1)) {
-              p.range = self._regionRange(p.node.regions)
-              var root = {
-                type: REGION,
-                regions: [ p, right ]
-              }
-              var pending = 2
-              var n = p.node.n
-              p.node.n = self._alloc()
-              parents[p.node.n] = root
-              parents[right.node.n] = root
-              self._put(p.node.n, p.node, done)
-              self._put(n, root, done)
-              function done (err) {
-                if (err) cb(err)
-                else if (--pending === 0) insert(root, 0)
-              }
-            } else {
-              p.node.regions.push(right)
-              self._put(p.node.n, p.node, function (err) {
-                if (err) cb(err)
-                else loop(parents[p.node.n])
+          if (self._overlappingRange(q, r.range)) {
+            if (typeof r.node === 'number') {
+              self._get(r.node, function (err, rnode) {
+                parents[rnode.n] = { node: node, index: i }
+                insert(rnode.n, depth+1)
               })
+            } else {
+              parents[r.node.n] = { node: node, index: i }
+              insert(r.node.n, depth+1)
             }
+            return
+          }
+        }
+        cb(new Error('INVALID STATE'))
+      } else if (node.type === POINTS) {
+        if (3 + (node.points.length + 1) * self._psize < self.size) {
+          node.points.push({ point: pt, value: value })
+          return self._put(node.n, node, cb)
+        }
+
+        var coords = []
+        var axis = (depth + 1) % pt.length
+        for (var i = 0; i < node.points.length; i++) {
+          coords.push(node.points[i].point[axis])
+        }
+        var pivot = median(coords)
+        if (!parents[node.n]) return cb(new Error('unexpectedly at the root node'))
+
+        if (self._willOverflow(parents[node.n].node, 1)) {
+          ;(function loop (p) {
+            if (!self._willOverflow(p.node, 1)) {
+              return insert(p.node.n, depth+1)
+            }
+            self._splitRegionNode(p.node, pivot, axis, function (err, right) {
+              if (err) return cb(err)
+              if (p.node.n === 0 || self._willOverflow(p.node, 1)) {
+                p.range = self._regionRange(p.node.regions)
+                var root = {
+                  type: REGION,
+                  regions: [ p, right ]
+                }
+                var pending = 2
+                var n = p.node.n
+                p.node.n = self._alloc()
+                parents[p.node.n] = root
+                parents[right.node.n] = root
+                self._put(p.node.n, p.node, done)
+                self._put(n, root, done)
+                function done (err) {
+                  if (err) cb(err)
+                  else if (--pending === 0) insert(n, 0)
+                }
+              } else {
+                p.node.regions.push(right)
+                self._put(p.node.n, p.node, function (err) {
+                  if (err) cb(err)
+                  else loop(parents[p.node.n])
+                })
+              }
+            })
+          })(parents[node.n])
+        } else {
+          self._splitPointNode(node.n, pivot, axis, function (err, left, right) {
+            if (err) return cb(err)
+            var pnode = parents[node.n].node
+            var pix = parents[node.n].index
+            var lrange = clone(pnode.regions[pix].range)
+            var rrange = clone(pnode.regions[pix].range)
+            lrange[axis][1] = pivot
+            rrange[axis][0] = pivot
+            var lregion = { range: lrange, node: node.n }
+            var rregion = { range: rrange, node: right.n }
+            pnode.regions[pix] = lregion
+            pnode.regions.push(rregion)
+            self._put(pnode.n, pnode, function (err) {
+              if (err) cb(err)
+              else insert(pnode.n, depth+1)
+            })
           })
-        })(parents[node.n])
-      } else {
-        self._splitPointNode(node.n, pivot, axis, function (err, left, right) {
-          if (err) return cb(err)
-          var pnode = parents[node.n].node
-          var pix = parents[node.n].index
-          var lrange = clone(pnode.regions[pix].range)
-          var rrange = clone(pnode.regions[pix].range)
-          lrange[axis][1] = pivot
-          rrange[axis][0] = pivot
-          var lregion = { range: lrange, node: node.n }
-          var rregion = { range: rrange, node: right.n }
-          pnode.regions[pix] = lregion
-          pnode.regions.push(rregion)
-          self._put(pnode.n, pnode, function (err) {
-            if (err) cb(err)
-            else insert(pnode, depth+1)
-          })
-        })
+        }
       }
-    }
+    })
   }
 })
 
