@@ -444,9 +444,9 @@ KDB.prototype._splitPointNode = function (node, pivot, axis, cb) {
   }
 }
 
-KDB.prototype._splitRegionNode = function (node, pivot, axis, cb) {
+KDB.prototype._splitRegionNode = function (range, pivot, axis, cb) {
   var self = this
-  var rrange = self._regionRange(node.node.regions)
+  var rrange = self._regionRange(range.node.regions)
   rrange[axis][0] = pivot
 
   var right = {
@@ -456,12 +456,12 @@ KDB.prototype._splitRegionNode = function (node, pivot, axis, cb) {
       regions: []
     }
   }
-  var left = node
+  var left = range
 
   ;(function loop (i) {
-    if (i >= node.node.regions.length) return done()
+    if (i >= range.node.regions.length) return done()
 
-    var r = node.node.regions[i]
+    var r = range.node.regions[i]
     if (r.range[axis][1] <= pivot) {
       // already in the right place
       loop(i+1)
