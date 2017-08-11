@@ -366,7 +366,7 @@ KDB.prototype.insert = queue(function (pt, value, cb) {
         }
         cb(new Error('INVALID STATE'))
       } else if (node.type === POINTS) {
-        if (3 + (node.points.length + 1) * self._psize < self.size) {
+        if (!self._willPointsOverflow(node, 1)) {
           node.points.push({ point: pt, value: value })
           return self._put(node.n, node, cb)
         }
@@ -379,14 +379,14 @@ KDB.prototype.insert = queue(function (pt, value, cb) {
         var pivot = median(coords)
         if (!parents[node.n]) return cb(new Error('unexpectedly at the root node'))
 
-        if (self._willOverflow(parents[node.n].node, 1)) {
+        if (self._willRegionOverflow(parents[node.n].node, 1)) {
           ;(function loop (p) {
-            if (!self._willOverflow(p.node, 1)) {
+            if (!self._willRegionOverflow(p.node, 1)) {
               return _insert(p.node.n, depth+1)
             }
             self._splitRegionNode(p.node, pivot, axis, function (err, right) {
               if (err) return cb(err)
-              if (p.node.n === 0 || self._willOverflow(p.node, 1)) {
+              if (p.node.n === 0 || self._willRegionOverflow(p.node, 1)) {
                 p.range = self._regionRange(p.node.regions)
                 var root = {
                   type: REGION,
@@ -568,8 +568,12 @@ KDB.prototype._regionRange = function (regions) {
   return range
 }
 
-KDB.prototype._willOverflow = function (node, spots) {
+KDB.prototype._willRegionOverflow = function (node, spots) {
   return 3 + (node.regions.length + spots) * this._rsize > this.size
+}
+
+KDB.prototype._willPointsOverflow = function (node, spots) {
+  return 3 + (node.points.length + spots) * this._psize > this.size
 }
 
 KDB.prototype._alloc = function () {
