@@ -155,7 +155,7 @@ KDB.prototype._put = function (n, node, cb, skipCache) {
   buf.writeUInt8(node.type, 0)
   node.n = n
   if (node.type === REGION) {
-    if (!skipCache) self.cache[n] = require('clone')(node)
+    if (!skipCache) self.cache[n] = node
     else self.cache[n] = null
     var len = node.regions.length
     buf.writeUInt16BE(len, 1)
@@ -465,8 +465,6 @@ KDB.prototype._splitPointNode = function (nodeIdx, pivot, axis, cb) {
 
 KDB.prototype._splitRegionNode = function (node, pivot, axis, cb) {
   var self = this
-
-  node = require('clone')(node)
 
   var rightNode = {
     type: REGION,
