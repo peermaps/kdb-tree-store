@@ -382,7 +382,7 @@ KDB.prototype.insert = queue(function (pt, value, cb) {
                 if (!self._willRegionOverflow(node, 1)) {
                   return _insert(regionEntry.node, depth+1)
                 }
-                self._splitRegionNode(node, pivot, axis, function (err, rightRegion, rightNode, leftNode) {
+                self._splitRegionNode(node, pivot, axis, function (err, rightRegion, leftNode) {
                   if (err) return cb(err)
                   if (regionEntry.node === 0 || self._willRegionOverflow(leftNode, 1)) {
                     regionEntry.range = self._regionRange(node.regions)
@@ -394,7 +394,7 @@ KDB.prototype.insert = queue(function (pt, value, cb) {
                     var n = regionEntry.node
                     regionEntry.node = self._alloc()
                     parents[regionEntry.node] = { node: n, index: 0 }
-                    parents[rightNode.n] = { node: n, index: 1 }
+                    parents[rightRegion.node] = { node: n, index: 1 }
                     self._put(regionEntry.node, node, done)
                     self._put(n, root, done, true)
                     function done (err) {
@@ -527,7 +527,7 @@ KDB.prototype._splitRegionNode = function (node, pivot, axis, cb) {
     rightNode.n = self._alloc()
     self._put(rightNode.n, rightNode, function (err) {
       if (err) cb(err)
-      else cb(null, rightRegion, rightNode, node)
+      else cb(null, rightRegion, node)
     }, true)
   }
 }
