@@ -415,13 +415,13 @@ KDB.prototype.insert = queue(function (pt, value, cb) {
         } else {
           self._splitPointNode(node.n, pivot, axis, function (err, left, right) {
             if (err) return cb(err)
-            var pnode = parents[node.n].node
-            var pix = parents[node.n].index
+            var pnode = parents[left.n].node
+            var pix = parents[left.n].index
             var lrange = clone(pnode.regions[pix].range)
             var rrange = clone(pnode.regions[pix].range)
             lrange[axis][1] = pivot
             rrange[axis][0] = pivot
-            var lregion = { range: lrange, node: node.n }
+            var lregion = { range: lrange, node: left.n }
             var rregion = { range: rrange, node: right.n }
             pnode.regions[pix] = lregion
             pnode.regions.push(rregion)
