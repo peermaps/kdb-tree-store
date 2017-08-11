@@ -385,7 +385,7 @@ KDB.prototype.insert = queue(function (pt, value, cb) {
                 self._splitRegionNode(node, pivot, axis, function (err, rightRegion, leftNode) {
                   if (err) return cb(err)
                   if (regionEntry.node === 0 || self._willRegionOverflow(leftNode, 1)) {
-                    regionEntry.range = self._regionRange(node.regions)
+                    regionEntry.range = self._regionRange(leftNode.regions)
                     var root = {
                       type: REGION,
                       regions: [ regionEntry, rightRegion ]
@@ -395,7 +395,7 @@ KDB.prototype.insert = queue(function (pt, value, cb) {
                     regionEntry.node = self._alloc()
                     parents[regionEntry.node] = { node: n, index: 0 }
                     parents[rightRegion.node] = { node: n, index: 1 }
-                    self._put(regionEntry.node, node, done)
+                    self._put(regionEntry.node, leftNode, done)
                     self._put(n, root, done, true)
                     function done (err) {
                       if (err) cb(err)
@@ -466,6 +466,8 @@ KDB.prototype._splitPointNode = function (nodeIdx, pivot, axis, cb) {
 KDB.prototype._splitRegionNode = function (node, pivot, axis, cb) {
   var self = this
 
+  node = require('clone')(node)
+
   var rightNode = {
     type: REGION,
     regions: []
@@ -506,13 +508,13 @@ KDB.prototype._splitRegionNode = function (node, pivot, axis, cb) {
             loop(i+1)
           })
         } else if (rnode.type === REGION) {
-          self._splitRegionNode(rnode, pivot, axis, function (err, spr) {
+          self._splitRegionNode(rnode, pivot, axis, function (err, spr, leftNode) {
             if (err) return cb(err)
             rright.node = { type: REGION, regions: [ spr ] }
             rright.node.n = self._alloc()
             var pending = 2
             self._put(rright.node.n, rright.node, done, true)
-            self._put(rnode.n, rnode, done)
+            self._put(leftNode.n, leftNode, done)
             function done (err) {
               if (err) cb(err)
               else if (--pending === 0) loop(i+1)
