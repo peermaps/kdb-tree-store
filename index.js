@@ -475,7 +475,7 @@ KDB.prototype._splitRegionNode = function (node, pivot, axis, cb) {
   rrange[axis][0] = pivot
   var rightRegion = {
     range: rrange,
-    node: rightNode
+    node: undefined
   }
 
   ;(function loop (i) {
@@ -525,6 +525,7 @@ KDB.prototype._splitRegionNode = function (node, pivot, axis, cb) {
 
   function done () {
     rightNode.n = self._alloc()
+    rightRegion.node = rightNode.n
     self._put(rightNode.n, rightNode, function (err) {
       if (err) cb(err)
       else cb(null, rightRegion, node)
