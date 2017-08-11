@@ -14,6 +14,7 @@ inherits(KDB, EventEmitter)
 
 function KDB (opts) {
   var self = this
+  this.cache = []
   if (!(this instanceof KDB)) return new KDB(opts)
   EventEmitter.call(this)
   this.store = opts.store
@@ -102,6 +103,7 @@ KDB.prototype._get = function (n, cb) {
     if (buf.length === 0) return cb(null, undefined)
     var node = { type: buf[0], n: n }
     if (node.type === REGION) {
+      if (self.cache[n]) return cb(null, self.cache[n])
       node.regions = []
       var nregions = buf.readUInt16BE(1)
       var offset = 3
@@ -123,6 +125,7 @@ KDB.prototype._get = function (n, cb) {
       }
       cb(null, node)
     } else if (node.type === POINTS) {
+      if (self.cache[n]) return cb(null, self.cache[n])
       node.points = []
       var npoints = buf.readUInt16BE(1)
       var offset = 3
@@ -146,11 +149,14 @@ KDB.prototype._get = function (n, cb) {
   })
 }
 
-KDB.prototype._put = function (n, node, cb) {
+KDB.prototype._put = function (n, node, cb, skipCache) {
   var self = this
   var buf = new Buffer(self.size)
   buf.writeUInt8(node.type, 0)
+  node.n = n
   if (node.type === REGION) {
+    if (!skipCache) self.cache[n] = require('clone')(node)
+    else self.cache[n] = null
     var len = node.regions.length
     buf.writeUInt16BE(len, 1)
     var offset = 3
@@ -167,6 +173,7 @@ KDB.prototype._put = function (n, node, cb) {
       offset += 4
     }
   } else if (node.type === POINTS) {
+    self.cache[n] = node
     var len = node.points.length
     buf.writeUInt16BE(len, 1)
     var offset = 3
@@ -391,7 +398,7 @@ KDB.prototype.insert = queue(function (pt, value, cb) {
                 parents[p.node.n] = root
                 parents[right.node.n] = root
                 self._put(p.node.n, p.node, done)
-                self._put(n, root, done)
+                self._put(n, root, done, true)
                 function done (err) {
                   if (err) cb(err)
                   else if (--pending === 0) _insert(n, 0)
@@ -401,7 +408,7 @@ KDB.prototype.insert = queue(function (pt, value, cb) {
                 self._put(p.node.n, p.node, function (err) {
                   if (err) cb(err)
                   else loop(parents[p.node.n])
-                })
+                }, true)
               }
             })
           })(parents[node.n])
@@ -500,7 +507,7 @@ KDB.prototype._splitRegionNode = function (node, pivot, axis, cb) {
             rright.node = { type: REGION, regions: [ spr ] }
             rright.node.n = self._alloc()
             var pending = 2
-            self._put(rright.node.n, rright.node, done)
+            self._put(rright.node.n, rright.node, done, true)
             self._put(rnode.n, rnode, done)
             function done (err) {
               if (err) cb(err)
@@ -517,7 +524,7 @@ KDB.prototype._splitRegionNode = function (node, pivot, axis, cb) {
     self._put(right.node.n, right.node, function (err) {
       if (err) cb(err)
       else cb(null, right)
-    })
+    }, true)
   }
 }
 
