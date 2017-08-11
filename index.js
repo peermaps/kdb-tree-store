@@ -396,7 +396,7 @@ KDB.prototype.insert = queue(function (pt, value, cb) {
                     parents[regionEntry.node] = { node: n, index: 0 }
                     parents[rightRegion.node] = { node: n, index: 1 }
                     self._put(regionEntry.node, leftNode, done)
-                    self._put(n, root, done, true)
+                    self._put(n, root, done)
                     function done (err) {
                       if (err) cb(err)
                       else if (--pending === 0) _insert(n, 0)
@@ -406,7 +406,7 @@ KDB.prototype.insert = queue(function (pt, value, cb) {
                     self._put(regionEntry.node, leftNode, function (err) {
                       if (err) cb(err)
                       else loop(parents[regionEntry.node])
-                    }, true)
+                    })
                   }
                 })
               })
@@ -513,7 +513,7 @@ KDB.prototype._splitRegionNode = function (node, pivot, axis, cb) {
             rright.node = { type: REGION, regions: [ spr ] }
             rright.node.n = self._alloc()
             var pending = 2
-            self._put(rright.node.n, rright.node, done, true)
+            self._put(rright.node.n, rright.node, done)
             self._put(leftNode.n, leftNode, done)
             function done (err) {
               if (err) cb(err)
