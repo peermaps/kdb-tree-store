@@ -97,13 +97,13 @@ KDB.prototype.queryStream = function (q, opts) {
 
 KDB.prototype._get = function (n, cb) {
   var self = this
+  if (self.cache[n]) return process.nextTick(cb, null, self.cache[n])
   self.store.get(n, function (err, buf) {
     if (err && err.notFound) return cb(null, undefined)
     if (err) return cb(err)
     if (buf.length === 0) return cb(null, undefined)
     var node = { type: buf[0], n: n }
     if (node.type === REGION) {
-      if (self.cache[n]) return cb(null, self.cache[n])
       node.regions = []
       var nregions = buf.readUInt16BE(1)
       var offset = 3
@@ -125,7 +125,6 @@ KDB.prototype._get = function (n, cb) {
       }
       cb(null, node)
     } else if (node.type === POINTS) {
-      if (self.cache[n]) return cb(null, self.cache[n])
       node.points = []
       var npoints = buf.readUInt16BE(1)
       var offset = 3
