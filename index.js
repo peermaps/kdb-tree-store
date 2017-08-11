@@ -414,11 +414,9 @@ KDB.prototype.insert = queue(function (pt, value, cb) {
           } else {
             self._splitPointNode(node.n, pivot, axis, function (err, left, right) {
               if (err) return cb(err)
-              console.log('1', parents[left.n])
               var pnodeidx = parents[left.n].node
               var pix = parents[left.n].index
               self._get(pnodeidx, function (err, pnode) {
-                console.log('pnode', pnode)
                 var lrange = clone(pnode.regions[pix].range)
                 var rrange = clone(pnode.regions[pix].range)
                 lrange[axis][1] = pivot
@@ -470,7 +468,7 @@ KDB.prototype._splitRegionNode = function (node, pivot, axis, cb) {
 
   var rrange = self._regionRange(node.regions)
   rrange[axis][0] = pivot
-  var right = {
+  var rightRegion = {
     range: rrange,
     node: {
       type: REGION,
@@ -486,7 +484,7 @@ KDB.prototype._splitRegionNode = function (node, pivot, axis, cb) {
       // already in the right place
       loop(i+1)
     } else if (r.range[axis][0] >= pivot) {
-      right.node.regions.push(r)
+      rightRegion.node.regions.push(r)
       node.regions.splice(i, 1)
       loop(i)
     } else {
@@ -494,7 +492,7 @@ KDB.prototype._splitRegionNode = function (node, pivot, axis, cb) {
         range: clone(r.range)
       }
       rright.range[axis][0] = pivot
-      right.node.regions.push(rright)
+      rightRegion.node.regions.push(rright)
 
       r.range[axis][1] = pivot
       self._get(r.node, function (err, rnode) {
@@ -524,10 +522,10 @@ KDB.prototype._splitRegionNode = function (node, pivot, axis, cb) {
   })(0)
 
   function done () {
-    right.node.n = self._alloc()
-    self._put(right.node.n, right.node, function (err) {
+    rightRegion.node.n = self._alloc()
+    self._put(rightRegion.node.n, rightRegion.node, function (err) {
       if (err) cb(err)
-      else cb(null, right, right.node, node)
+      else cb(null, rightRegion, rightRegion.node, node)
     }, true)
   }
 }
