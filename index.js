@@ -14,6 +14,7 @@ inherits(KDB, EventEmitter)
 
 function KDB (opts) {
   var self = this
+  this.cache = []
   if (!(this instanceof KDB)) return new KDB(opts)
   EventEmitter.call(this)
   this.store = opts.store
@@ -96,6 +97,7 @@ KDB.prototype.queryStream = function (q, opts) {
 
 KDB.prototype._get = function (n, cb) {
   var self = this
+  if (self.cache[n]) return process.nextTick(cb, null, self.cache[n])
   self.store.get(n, function (err, buf) {
     if (err && err.notFound) return cb(null, undefined)
     if (err) return cb(err)
@@ -146,11 +148,14 @@ KDB.prototype._get = function (n, cb) {
   })
 }
 
-KDB.prototype._put = function (n, node, cb) {
+KDB.prototype._put = function (n, node, cb, skipCache) {
   var self = this
   var buf = new Buffer(self.size)
   buf.writeUInt8(node.type, 0)
+  node.n = n
   if (node.type === REGION) {
+    if (!skipCache) self.cache[n] = node
+    else self.cache[n] = null
     var len = node.regions.length
     buf.writeUInt16BE(len, 1)
     var offset = 3
@@ -167,6 +172,7 @@ KDB.prototype._put = function (n, node, cb) {
       offset += 4
     }
   } else if (node.type === POINTS) {
+    self.cache[n] = node
     var len = node.points.length
     buf.writeUInt16BE(len, 1)
     var offset = 3
@@ -315,13 +321,14 @@ KDB.prototype.insert = queue(function (pt, value, cb) {
     else if (!node) {
       node = {
         type: REGION,
-        regions: [ { range: [], node: 1 } ]
+        regions: [ { range: [], node: 1 } ],
+        n: 0
       }
       for (var i = 0; i < self.dim; i++) {
         var t = self.types[i]
         node.regions[0].range.push([t.min,t.max])
       }
-      var pts = { type: POINTS, points: [] }
+      var pts = { type: POINTS, points: [], node: 1 }
       var pending = 2
       self._put(self._alloc(), node, function (err) {
         if (--pending === 0) f(err, node)
@@ -329,172 +336,182 @@ KDB.prototype.insert = queue(function (pt, value, cb) {
       self._put(self._alloc(), pts, function (err) {
         if (--pending === 0) f(err, node)
       })
-    } else insert(node, 0)
+    } else _insert(node.n, 0)
   })
 
-  function insert (node, depth) {
-    if (node.type === REGION) {
-      for (var i = 0; i < node.regions.length; i++) {
-        var r = node.regions[i]
-        if (r.node === node.n) {
-          return cb(new Error('corrupt data: region cycle detected'))
-        }
-        if (self._overlappingRange(q, r.range)) {
-          if (typeof r.node === 'number') {
-            self._get(r.node, function (err, rnode) {
-              rnode.parent = { node: node, index: i }
-              insert(rnode, depth+1)
-            })
-          } else {
-            r.node.parent = { node: node, index: i }
-            insert(r.node, depth+1)
-          }
-          return
-        }
-      }
-      cb(new Error('INVALID STATE'))
-    } else if (node.type === POINTS) {
-      if (3 + (node.points.length + 1) * self._psize < self.size) {
-        node.points.push({ point: pt, value: value })
-        return self._put(node.n, node, cb)
-      }
+  var parents = []
 
-      var coords = []
-      var axis = (depth + 1) % pt.length
-      for (var i = 0; i < node.points.length; i++) {
-        coords.push(node.points[i].point[axis])
-      }
-      var pivot = median(coords)
-      if (!node.parent) return cb(new Error('unexpectedly at the root node'))
-
-      if (self._willOverflow(node.parent.node, 1)) {
-        ;(function loop (p) {
-          if (!self._willOverflow(p.node, 1)) {
-            return insert(p.node, depth+1)
+  function _insert (nodeIdx, depth) {
+    self._get(nodeIdx, function (err, node) {
+      if (err) return cb(err)
+      if (node.type === REGION) {
+        for (var i = 0; i < node.regions.length; i++) {
+          var r = node.regions[i]
+          if (r.node === node.n) {
+            return cb(new Error('corrupt data: region cycle detected'))
           }
-          self._splitRegionNode(p, pivot, axis, function (err, right) {
-            if (err) return cb(err)
-            if (p.node.n === 0 || self._willOverflow(p.node, 1)) {
-              p.range = self._regionRange(p.node.regions)
-              var root = {
-                type: REGION,
-                regions: [ p, right ]
-              }
-              var pending = 2
-              var n = p.node.n
-              p.node.n = self._alloc()
-              p.node.parent = root
-              right.node.parent = root
-              self._put(p.node.n, p.node, done)
-              self._put(n, root, done)
-              function done (err) {
-                if (err) cb(err)
-                else if (--pending === 0) insert(root, 0)
-              }
-            } else {
-              p.node.regions.push(right)
-              self._put(p.node.n, p.node, function (err) {
-                if (err) cb(err)
-                else loop(p.node.parent)
+          if (self._overlappingRange(q, r.range)) {
+            if (typeof r.node !== 'number') return cb(new Error('region.node should be a number'))
+            parents[r.node] = { node: nodeIdx, index: i }
+            return _insert(r.node, depth+1)
+          }
+        }
+        cb(new Error('INVALID STATE'))
+      } else if (node.type === POINTS) {
+        if (!self._willPointsOverflow(node, 1)) {
+          node.points.push({ point: pt, value: value })
+          return self._put(node.n, node, cb)
+        }
+
+        // determine the axis and pivot point for the region split on this point node's parent
+        var coords = []
+        var axis = (depth + 1) % pt.length
+        for (var i = 0; i < node.points.length; i++) {
+          coords.push(node.points[i].point[axis])
+        }
+        var pivot = median(coords)
+        if (!parents[node.n]) return cb(new Error('unexpectedly at the root node'))
+
+        var parentNodeIdx = parents[node.n].node
+        self._get(parents[node.n].node, function (err, parentNode) {
+          if (self._willRegionOverflow(parentNode, 1)) {
+            ;(function loop (regionEntry) {
+              self._get(regionEntry.node, function (err, node) {
+                if (err) return cb(err)
+                if (!self._willRegionOverflow(node, 1)) {
+                  return _insert(regionEntry.node, depth+1)
+                }
+                self._splitRegionNode(node, pivot, axis, function (err, rightRegion, leftNode) {
+                  if (err) return cb(err)
+                  if (regionEntry.node === 0 || self._willRegionOverflow(leftNode, 1)) {
+                    regionEntry.range = self._regionRange(leftNode.regions)
+                    var root = {
+                      type: REGION,
+                      regions: [ regionEntry, rightRegion ]
+                    }
+                    var pending = 2
+                    var n = regionEntry.node
+                    regionEntry.node = self._alloc()
+                    parents[regionEntry.node] = { node: n, index: 0 }
+                    parents[rightRegion.node] = { node: n, index: 1 }
+                    self._put(regionEntry.node, leftNode, done)
+                    self._put(n, root, done)
+                    function done (err) {
+                      if (err) cb(err)
+                      else if (--pending === 0) _insert(n, 0)
+                    }
+                  } else {
+                    leftNode.regions.push(rightRegion)
+                    self._put(regionEntry.node, leftNode, function (err) {
+                      if (err) cb(err)
+                      else loop(parents[regionEntry.node])
+                    })
+                  }
+                })
               })
-            }
-          })
-        })(node.parent)
-      } else {
-        self._splitPointNode(node, pivot, axis, function (err, right) {
-          if (err) return cb(err)
-          var pnode = node.parent.node
-          var pix = node.parent.index
-          var lrange = clone(pnode.regions[pix].range)
-          var rrange = clone(pnode.regions[pix].range)
-          lrange[axis][1] = pivot
-          rrange[axis][0] = pivot
-          var lregion = { range: lrange, node: node.n }
-          var rregion = { range: rrange, node: right.n }
-          pnode.regions[pix] = lregion
-          pnode.regions.push(rregion)
-          self._put(pnode.n, pnode, function (err) {
-            if (err) cb(err)
-            else insert(pnode, depth+1)
-          })
+            })(parents[node.n])
+          } else {
+            self._splitPointNode(node.n, pivot, axis, function (err, left, right) {
+              if (err) return cb(err)
+              var pnodeidx = parents[left.n].node
+              var pix = parents[left.n].index
+              self._get(pnodeidx, function (err, pnode) {
+                var lrange = clone(pnode.regions[pix].range)
+                var rrange = clone(pnode.regions[pix].range)
+                lrange[axis][1] = pivot
+                rrange[axis][0] = pivot
+                var lregion = { range: lrange, node: left.n }
+                var rregion = { range: rrange, node: right.n }
+                pnode.regions[pix] = lregion
+                pnode.regions.push(rregion)
+                self._put(pnode.n, pnode, function (err) {
+                  if (err) cb(err)
+                  else _insert(pnode.n, depth+1)
+                })
+              })
+            })
+          }
         })
       }
-    }
+    })
   }
 })
 
-KDB.prototype._splitPointNode = function (node, pivot, axis, cb) {
+KDB.prototype._splitPointNode = function (nodeIdx, pivot, axis, cb) {
   var self = this
   var right = { type: POINTS, points: [] }
-  for (var i = 0; i < node.points.length; i++) {
-    var p = node.points[i]
-    if (p.point[axis] >= pivot) {
-      right.points.push(p)
-      node.points.splice(i, 1)
-      i--
+  self._get(nodeIdx, function (err, node) {
+    if (err) return cb(err)
+
+    for (var i = 0; i < node.points.length; i++) {
+      var p = node.points[i]
+      if (p.point[axis] >= pivot) {
+        right.points.push(p)
+        node.points.splice(i, 1)
+        i--
+      }
     }
-  }
-  right.n = self._alloc()
-  var pending = 2
-  self._put(right.n, right, onput)
-  self._put(node.n, node, onput)
-  function onput (err) {
-    if (err) cb(err)
-    else if (--pending === 0) cb(null, right)
-  }
+    right.n = self._alloc()
+    var pending = 2
+    self._put(right.n, right, onput)
+    self._put(node.n, node, onput)
+    function onput (err) {
+      if (err) cb(err)
+      else if (--pending === 0) cb(null, node, right)
+    }
+  })
 }
 
 KDB.prototype._splitRegionNode = function (node, pivot, axis, cb) {
   var self = this
-  var rrange = self._regionRange(node.node.regions)
-  rrange[axis][0] = pivot
 
-  var right = {
-    range: rrange,
-    node: {
-      type: REGION,
-      regions: []
-    }
+  var rightNode = {
+    type: REGION,
+    regions: []
   }
-  var left = node
+
+  var rrange = self._regionRange(node.regions)
+  rrange[axis][0] = pivot
+  var rightRegion = {
+    range: rrange,
+    node: undefined
+  }
 
   ;(function loop (i) {
-    if (i >= node.node.regions.length) return done()
+    if (i >= node.regions.length) return done()
 
-    var r = node.node.regions[i]
+    var r = node.regions[i]
     if (r.range[axis][1] <= pivot) {
       // already in the right place
       loop(i+1)
     } else if (r.range[axis][0] >= pivot) {
-      right.node.regions.push(r)
-      left.node.regions.splice(i, 1)
+      rightNode.regions.push(r)
+      node.regions.splice(i, 1)
       loop(i)
     } else {
       var rright = {
         range: clone(r.range)
       }
       rright.range[axis][0] = pivot
-      right.node.regions.push(rright)
+      rightNode.regions.push(rright)
 
-      var rleft = r
-      rleft.range[axis][1] = pivot
+      r.range[axis][1] = pivot
       self._get(r.node, function (err, rnode) {
         if (err) return cb(err)
         if (rnode.type === POINTS) {
-          self._splitPointNode(rnode, pivot, axis, function (err, rn) {
+          self._splitPointNode(rnode.n, pivot, axis, function (err, ln, rn) {
             if (err) return cb(err)
             rright.node = rn
             loop(i+1)
           })
         } else if (rnode.type === REGION) {
-          r.node = rnode
-          self._splitRegionNode(r, pivot, axis, function (err, spr) {
+          self._splitRegionNode(rnode, pivot, axis, function (err, spr, leftNode) {
             if (err) return cb(err)
             rright.node = { type: REGION, regions: [ spr ] }
             rright.node.n = self._alloc()
             var pending = 2
             self._put(rright.node.n, rright.node, done)
-            self._put(rnode.n, rnode, done)
+            self._put(leftNode.n, leftNode, done)
             function done (err) {
               if (err) cb(err)
               else if (--pending === 0) loop(i+1)
@@ -506,11 +523,12 @@ KDB.prototype._splitRegionNode = function (node, pivot, axis, cb) {
   })(0)
 
   function done () {
-    right.node.n = self._alloc()
-    self._put(right.node.n, right.node, function (err) {
+    rightNode.n = self._alloc()
+    rightRegion.node = rightNode.n
+    self._put(rightNode.n, rightNode, function (err) {
       if (err) cb(err)
-      else cb(null, right)
-    })
+      else cb(null, rightRegion, node)
+    }, true)
   }
 }
 
@@ -554,8 +572,12 @@ KDB.prototype._regionRange = function (regions) {
   return range
 }
 
-KDB.prototype._willOverflow = function (node, spots) {
+KDB.prototype._willRegionOverflow = function (node, spots) {
   return 3 + (node.regions.length + spots) * this._rsize > this.size
+}
+
+KDB.prototype._willPointsOverflow = function (node, spots) {
+  return 3 + (node.points.length + spots) * this._psize > this.size
 }
 
 KDB.prototype._alloc = function () {
