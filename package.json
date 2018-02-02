@@ -26,6 +26,7 @@
   },
   "homepage": "https://github.com/peermaps/kdb-tree-store#readme",
   "devDependencies": {
+    "abstract-point-store": "^1.1.0",
     "fd-chunk-store": "^2.0.0",
     "memory-chunk-store": "^1.3.0",
     "tape": "^4.2.2"
